@@ -1,9 +1,9 @@
 import { Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar.jsx';
-import Home from './components/home.jsx';
-import Footer from './components/Footer.jsx';
-import AtsChecker from './components/Atschecker.jsx';
-import JdMatchValidator from './components/JdMatchValidator.jsx';
+import Navbar from './components/Navbar';
+import Home from './components/Home';
+import Footer from './components/Footer';
+import AtsChecker from './components/Atschecker';
+import JdMatchValidator from './components/JdMatchValidator';
 
 function App() {
   return (
