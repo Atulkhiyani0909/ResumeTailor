@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 export default function AtsChecker() {
   const [file, setFile] = useState(null);
-  const [scanState, setScanState] = useState('idle'); // idle, scanning, complete, autofixing, fixed
+  const [scanState, setScanState] = useState('idle'); 
   const [scanProgress, setScanProgress] = useState(0);
   const [scanText, setScanText] = useState('Initializing AI engine...');
   const [terminalLogs, setTerminalLogs] = useState([]);
