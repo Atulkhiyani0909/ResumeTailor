@@ -34,7 +34,7 @@ export default function Navbar() {
           <a href="/jd-match" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white hover:shadow-sm transition-all duration-200">
             JD MATCHER
           </a>
-           <a href="#pricing" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white hover:shadow-sm transition-all duration-200">
+           <a href="/jobs-apply" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white hover:shadow-sm transition-all duration-200">
             SMART JOB AGENT
           </a>
         </div>

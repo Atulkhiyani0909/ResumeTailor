@@ -1,188 +1,244 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { toPng } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 
 export default function AtsChecker() {
   const [file, setFile] = useState(null);
-  const [scanState, setScanState] = useState('idle'); 
+  const [scanState, setScanState] = useState('idle');
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanText, setScanText] = useState('Initializing AI engine...');
   const [terminalLogs, setTerminalLogs] = useState([]);
+  const [atsResults, setAtsResults] = useState(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  // Phase 1: Upload (KEPT EXACTLY THE SAME)
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     const uploadedFile = e.target.files[0] || e.dataTransfer?.files[0];
     if (!uploadedFile) return;
+    
     setFile(uploadedFile);
     setScanState('scanning');
     setScanProgress(0);
     setTerminalLogs(['[SYSTEM] Initializing secure environment...']);
+    setAtsResults(null);
+
+    try {
+      setTerminalLogs(prev => [...prev, '[NETWORK] Transmitting encrypted payload to server...'].slice(-5));
+      const formData = new FormData();
+      formData.append('resume', uploadedFile); 
+      
+      const response = await axios.post('http://localhost:3000/api/ats/analyze-resume', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      setTerminalLogs(prev => [...prev, '[SYSTEM] Analysis complete. Rendering results...'].slice(-5));
+      setAtsResults(response.data.ats_data.response);
+    } catch (error) {
+      setTerminalLogs(prev => [...prev, '[ERROR] Pipeline failure. Please try again.'].slice(-5));
+      setTimeout(() => setScanState('idle'), 3000);
+    }
   };
 
   const handleDragOver = (e) => e.preventDefault();
+  
   const handleDrop = (e) => {
     e.preventDefault();
     handleUpload(e);
   };
 
-  // Advanced Scanning Effects
   useEffect(() => {
-    if (scanState === 'scanning' || scanState === 'autofixing') {
+    if (scanState === 'scanning') {
       const interval = setInterval(() => {
         setScanProgress((prev) => {
+          if (!atsResults && prev >= 90) return 90;
+          if (atsResults && prev < 100) return prev + 2; 
           if (prev >= 100) {
             clearInterval(interval);
-            setTimeout(() => setScanState(scanState === 'scanning' ? 'complete' : 'fixed'), 800);
+            setTimeout(() => setScanState('complete'), 400);
             return 100;
           }
           
           const newProgress = prev + 1;
+          const logs = [...terminalLogs];
+          if (newProgress === 10) logs.push('[PARSER] Extracting text nodes and metadata...');
+          if (newProgress === 35) logs.push('[AI] Running heuristic layout analysis...');
+          if (newProgress === 60) logs.push('[VECTOR] Cross-referencing industry keywords...');
+          if (newProgress === 85 && !atsResults) logs.push('[NETWORK] Waiting for AI model response...');
+          if (logs.length > terminalLogs.length) setTerminalLogs(logs.slice(-5));
           
-          // Terminal Log Generation
-          if (scanState === 'scanning') {
-            if (newProgress === 10) addLog('[PARSER] Extracting text nodes and metadata...');
-            if (newProgress === 35) addLog('[AI] Running heuristic layout analysis...');
-            if (newProgress === 60) addLog('[VECTOR] Cross-referencing 10,000+ industry keywords...');
-            if (newProgress === 85) addLog('[SCORING] Compiling final ATS match metrics...');
-          } else {
-            if (newProgress === 10) addLog('[LLM] Connecting to neural cluster...');
-            if (newProgress === 30) addLog('[LLM] Rewriting 5 passive bullet points to active voice...');
-            if (newProgress === 60) addLog('[LLM] Injecting missing core competencies...');
-            if (newProgress === 85) addLog('[SYSTEM] Recompiling PDF to ATS-friendly format...');
-          }
-
           return newProgress;
         });
-      }, scanState === 'scanning' ? 40 : 60);
+      }, 50);
       return () => clearInterval(interval);
     }
-  }, [scanState]);
-
-  const addLog = (log) => {
-    setTerminalLogs(prev => [...prev, log].slice(-4)); // Keep last 4 logs
-  };
-
-  const triggerAutoFix = () => {
-    setScanState('autofixing');
-    setScanProgress(0);
-    setTerminalLogs(['[SYSTEM] Initiating AI Auto-Fix sequence...']);
-  };
+  }, [scanState, atsResults, terminalLogs]);
 
   const resetScanner = () => {
     setFile(null);
+    setAtsResults(null);
     setScanState('idle');
     setScanProgress(0);
     setTerminalLogs([]);
+    setShowRaw(false);
   };
 
-  return (
-    <div className="relative w-full min-h-screen pt-24 pb-20 transition-colors duration-300 flex flex-col items-center overflow-hidden">
+  const downloadReport = async () => {
+    setIsDownloading(true);
+    
+    // 1. Grab all the containers that restrict height and control scrolling
+    const reportContainer = document.getElementById('report-container');
+    const panelsWrapper = document.getElementById('panels-wrapper');
+    const leftPanel = document.getElementById('left-panel');
+    const rightPanel = document.getElementById('right-panel');
+    const mainWrapper = document.getElementById('main-wrapper');
+
+    // 2. Temporarily strip away ALL Tailwind scroll constraints to expand the DOM fully
+    if (mainWrapper) mainWrapper.classList.remove('lg:h-screen', 'lg:overflow-hidden');
+    if (reportContainer) reportContainer.classList.remove('h-full', 'overflow-hidden');
+    if (panelsWrapper) panelsWrapper.classList.remove('flex-1', 'overflow-hidden');
+    if (leftPanel) leftPanel.classList.remove('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
+    if (rightPanel) rightPanel.classList.remove('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
+
+    // Wait for the browser to repaint the physically stretched DOM
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    try {
+      const dataUrl = await toPng(reportContainer, {
+        cacheBust: true,
+        backgroundColor: '#0B0F19',
+        pixelRatio: 2,
+        filter: (node) => {
+          return node.getAttribute?.('data-html2canvas-ignore') !== 'true';
+        }
+      });
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfPageHeight = pdf.internal.pageSize.getHeight();
       
-      {/* Premium SaaS Dotted Background Pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] dark:bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-40 dark:opacity-20 pointer-events-none"></div>
-      <div className="absolute top-20 left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/10 blur-[100px] pointer-events-none"></div>
+      // Calculate the image height scaled to the PDF's A4 width
+      const imgProps = pdf.getImageProperties(dataUrl);
+      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-8">
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdfPageHeight;
+
+      // Loop and add new pages for overflow
+      while (heightLeft > 0) {
+        position -= pdfPageHeight;
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfPageHeight;
+      }
+
+      pdf.save(`ResumeTailor_Report_${file?.name?.replace('.pdf', '') || 'Resume'}.pdf`);
+    } catch (err) {
+      console.error("PDF Download failed:", err);
+    } finally {
+      // 3. Instantly put all the constraints and scrollbars back!
+      if (mainWrapper) mainWrapper.classList.add('lg:h-screen', 'lg:overflow-hidden');
+      if (reportContainer) reportContainer.classList.add('h-full', 'overflow-hidden');
+      if (panelsWrapper) panelsWrapper.classList.add('flex-1', 'overflow-hidden');
+      if (leftPanel) leftPanel.classList.add('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
+      if (rightPanel) rightPanel.classList.add('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
+      
+      setIsDownloading(false);
+    }
+  };
+
+  const score = atsResults?.final_score || 0;
+  const breakdown = atsResults?.score_breakdown || {};
+  const missingKeywords = atsResults?.missing_keywords || [];
+  const suggestions = atsResults?.suggestions || [];
+  const semanticErrors = atsResults?.semantic_error || [];
+  const parsedData = atsResults?.parsed_resume_structured || {};
+  const rawText = atsResults?.resume_content_raw || '';
+  
+  let scoreColor = "text-rose-500";
+  let scoreLabel = "High Risk";
+  let scoreGradStart = "#f43f5e";
+  
+  if (score >= 60) {
+    scoreColor = "text-amber-500";
+    scoreLabel = "Average";
+    scoreGradStart = "#f59e0b";
+  }
+  if (score >= 80) {
+    scoreColor = "text-emerald-500";
+    scoreLabel = "Excellent";
+    scoreGradStart = "#10b981";
+  }
+
+  const radius = 58;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (circumference * score) / 100;
+
+  const formatKey = (key) => key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  return (
+    <div id="main-wrapper" className={`relative w-full bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 font-sans selection:bg-indigo-500/30 pt-16 ${scanState === 'complete' ? 'lg:h-screen lg:overflow-hidden pb-0' : 'min-h-screen overflow-x-hidden pb-24'}`}>
+      
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" data-html2canvas-ignore="true">
+        <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(#475569 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-full max-w-4xl h-[600px] bg-indigo-500/10 blur-[120px] rounded-full"></div>
+      </div>
+
+      <div className="relative z-10 w-full max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col">
         
-        {/* =========================================================================================
-            PHASE 1: IDLE (UPLOAD) - EXACTLY AS REQUESTED. DO NOT CHANGE. 
-            ========================================================================================= */}
         {scanState === 'idle' && (
-           <div className="grid lg:grid-cols-2 gap-16 items-center animate-[fadeIn_0.5s_ease-out] pt-10">
-           {/* Left Side: Education */}
-           <div className="max-w-xl">
-             <div className="inline-flex items-center space-x-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 px-3 py-1.5 rounded-full mb-6 shadow-sm">
-               <span className="flex h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
-               <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Free Analysis</span>
-             </div>
-             <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 text-slate-900 dark:text-white tracking-tight leading-[1.1]">
-               Beat the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-500">Bots.</span> <br />
-               Land the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400">Interview.</span>
-             </h1>
-             <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 font-medium leading-relaxed">
-               <strong className="text-slate-900 dark:text-slate-200">75% of resumes are never seen by a human.</strong> Companies use Applicant Tracking Systems (ATS) to filter out candidates before the recruiter even opens the file.
-             </p>
-
-             <div className="space-y-5 mb-10">
-                <div className="flex items-start gap-4">
-                  <div className="mt-1 bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 text-indigo-500">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white">Keyword Optimization</h3>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">We check if you have the exact terminology the ATS algorithm is programmed to find.</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-start gap-4">
-                  <div className="mt-1 bg-white dark:bg-slate-800 p-2 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 text-blue-500">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white">Formatting Parsability</h3>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Complex columns and graphics break ATS bots. We ensure your data is perfectly readable.</p>
-                  </div>
-                </div>
-              </div>
-           </div>
-
-           {/* Right Side: Upload Box */}
-           <div className="relative group w-full max-w-lg mx-auto lg:mx-0" onDragOver={handleDragOver} onDrop={handleDrop}>
-             <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-             <div className="relative bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-slate-200/50 dark:border-white/10 p-8 rounded-[2.5rem] shadow-2xl">
-               <div className="text-center mb-6">
-                 <h3 className="text-2xl font-black text-slate-900 dark:text-white">Upload Resume</h3>
-                 <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Find out your true score in seconds.</p>
+           <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center justify-between animate-[fadeIn_0.5s_ease-out] pt-12 lg:pt-20">
+             <div className="w-full lg:w-1/2 text-center lg:text-left">
+               <div className="inline-flex items-center space-x-2 bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-4 py-2 rounded-full mb-8 shadow-sm">
+                 <span className="flex h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                 <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Enterprise ATS Scanner</span>
                </div>
-               <label className="flex flex-col items-center justify-center w-full h-72 border-2 border-dashed border-indigo-300 dark:border-indigo-500/50 rounded-3xl bg-indigo-50/50 dark:bg-slate-800/50 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 transition-all cursor-pointer">
-                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                   <div className="w-20 h-20 mb-6 rounded-2xl bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center group-hover:-translate-y-2 transition-transform duration-300">
-                     <svg className="w-10 h-10 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                   </div>
-                   <p className="mb-2 text-xl font-bold text-slate-700 dark:text-slate-200">Drag & Drop</p>
-                   <p className="text-slate-500 dark:text-slate-400 text-sm font-medium px-8 text-center">or click to browse your files (PDF, DOCX)</p>
+               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-6 tracking-tight leading-[1.1]">
+                 Beat the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-500">Bots.</span> <br />
+                 Land the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400">Interview.</span>
+               </h1>
+               <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-10 font-medium leading-relaxed max-w-xl mx-auto lg:mx-0">
+                 Upload your resume to instantly reveal hidden formatting errors, missing keywords, and structural flaws that cause ATS rejections.
+               </p>
+             </div>
+
+             <div className="w-full lg:w-1/2 max-w-md mx-auto relative group" onDragOver={handleDragOver} onDrop={handleDrop}>
+               <div className="absolute inset-0 bg-gradient-to-b from-indigo-500 to-cyan-400 rounded-3xl blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
+               <div className="relative bg-white dark:bg-[#111827]/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 rounded-3xl shadow-2xl flex flex-col items-center justify-center text-center">
+                 <div className="w-16 h-16 mb-6 rounded-2xl bg-indigo-50 dark:bg-[#1f2937] shadow-inner border border-indigo-100 dark:border-slate-700 flex items-center justify-center group-hover:-translate-y-2 transition-transform duration-300">
+                   <svg className="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                  </div>
-                 <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
-               </label>
-               <div className="mt-6 flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path></svg>
-                  Private & Secure. We don't store your data.
-                </div>
+                 <h3 className="text-xl font-black mb-2">Upload Resume</h3>
+                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8">PDF or DOCX up to 5MB</p>
+                 <label className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                   Browse Files
+                   <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
+                 </label>
+                 <p className="mt-5 text-[10px] font-semibold text-slate-400">Strictly confidential. No data is stored.</p>
+               </div>
              </div>
            </div>
-         </div>
         )}
 
-        {/* =========================================================================================
-            PHASE 2 & 4: ENTERPRISE TERMINAL LOADING UI
-            ========================================================================================= */}
-        {(scanState === 'scanning' || scanState === 'autofixing') && (
-          <div className="flex flex-col items-center justify-center py-10 w-full max-w-3xl mx-auto animate-[fadeIn_0.5s_ease-out]">
-            
-            {/* Terminal Window */}
-            <div className="w-full bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden mb-8 relative">
-              
-              {/* Terminal Header */}
-              <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+        {scanState === 'scanning' && (
+          <div className="flex flex-col items-center justify-center h-full w-full max-w-2xl mx-auto animate-[fadeIn_0.5s_ease-out]">
+            <div className="w-full bg-[#0d1117] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden mb-6">
+              <div className="bg-[#161b22] border-b border-slate-800 px-4 py-2.5 flex items-center justify-between">
                 <div className="flex space-x-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
                 </div>
-                <div className="text-xs font-mono text-slate-500">
-                  {scanState === 'autofixing' ? 'llm-optimization.sh' : 'ats-analyzer.sh'}
-                </div>
+                <div className="text-[10px] font-mono text-slate-500">ats-core-engine.sh</div>
               </div>
-
-              {/* Terminal Body */}
-              <div className="p-6 h-64 font-mono text-sm overflow-hidden relative">
-                {/* Glowing Scanner Line over code */}
-                <div className={`absolute left-0 right-0 h-32 blur-2xl opacity-20 z-0 ${scanState === 'autofixing' ? 'bg-purple-500' : 'bg-indigo-500'}`} style={{ animation: 'scanLaser 2s infinite ease-in-out alternate' }}></div>
-                
-                <style>{`@keyframes scanLaser { 0% { top: -20%; } 100% { top: 100%; } }`}</style>
-                
+              <div className="p-5 h-64 font-mono text-xs overflow-hidden relative flex flex-col justify-end">
                 <div className="relative z-10 flex flex-col space-y-3">
                   {terminalLogs.map((log, i) => (
-                    <div key={i} className={`${i === terminalLogs.length - 1 ? (scanState === 'autofixing' ? 'text-purple-400' : 'text-indigo-400') : 'text-slate-500'}`}>
+                    <div key={i} className={`${i === terminalLogs.length - 1 ? 'text-indigo-400 font-bold' : 'text-slate-500'}`}>
                       <span className="opacity-50 mr-2">{'>'}</span>{log}
                     </div>
                   ))}
@@ -190,178 +246,277 @@ export default function AtsChecker() {
                 </div>
               </div>
             </div>
-
-            {/* Premium Progress Bar */}
-            <div className="w-full max-w-xl">
-              <div className="flex justify-between text-sm font-bold font-mono mb-2">
-                <span className={scanState === 'autofixing' ? 'text-purple-400' : 'text-indigo-400'}>
-                  {scanState === 'autofixing' ? 'OPTIMIZING...' : 'ANALYZING...'}
+            <div className="w-full px-2">
+              <div className="flex justify-between text-xs font-bold font-mono mb-2">
+                <span className="text-indigo-400 tracking-widest">
+                  {scanProgress < 90 ? 'ANALYZING DOCUMENT...' : 'WAITING FOR AI RESPONSE...'}
                 </span>
-                <span className="text-slate-400">{scanProgress}%</span>
+                <span className="text-slate-500">{scanProgress}%</span>
               </div>
-              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden shadow-inner border border-slate-800">
-                <div className={`h-full rounded-full transition-all duration-75 ease-linear relative ${scanState === 'autofixing' ? 'bg-gradient-to-r from-purple-600 to-pink-500' : 'bg-gradient-to-r from-indigo-500 to-cyan-400'}`} style={{ width: `${scanProgress}%` }}>
-                  <div className="absolute inset-0 bg-white/20"></div>
-                </div>
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-100 ease-linear bg-indigo-500" style={{ width: `${scanProgress}%` }}></div>
               </div>
             </div>
           </div>
         )}
 
-        {/* =========================================================================================
-            PHASE 3: ENTERPRISE RESULTS DASHBOARD
-            ========================================================================================= */}
-        {scanState === 'complete' && (
-          <div className="animate-[fadeIn_0.5s_ease-out] w-full max-w-6xl mx-auto pt-6">
+        {scanState === 'complete' && atsResults && (
+          <div id="report-container" className="animate-[fadeIn_0.5s_ease-out] w-full pt-7 flex flex-col h-full bg-[#0B0F19] overflow-hidden">
             
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4 border-b border-slate-200 dark:border-white/10 pb-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4 border-b border-slate-200 dark:border-slate-800/60 pb-5 flex-shrink-0 px-2">
               <div>
-                <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">ATS Audit Report</h2>
-                <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">Target Document: <span className="font-mono text-slate-900 dark:text-white">{file?.name}</span></p>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-12 gap-6">
-              
-              {/* Overall Score Box */}
-              <div className="lg:col-span-4 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-6 w-full text-center">Match Probability</h3>
-                
-                <div className="relative w-48 h-48 flex items-center justify-center mb-2">
-                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="40" className="stroke-slate-100 dark:stroke-slate-800" strokeWidth="6" fill="none" />
-                    <circle cx="50" cy="50" r="40" className="stroke-amber-500 transition-all duration-1000 ease-out" strokeWidth="6" fill="none" strokeLinecap="round" style={{ strokeDasharray: 251.2, strokeDashoffset: 251.2 - (251.2 * 68) / 100 }} />
-                  </svg>
-                  <div className="absolute flex flex-col items-center justify-center">
-                    <span className="text-6xl font-black font-mono text-slate-900 dark:text-white tracking-tighter">68</span>
-                    <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider bg-amber-500/10 px-2 py-0.5 rounded-sm mt-1 border border-amber-500/20">Needs Work</span>
-                  </div>
-                </div>
-                <p className="text-center text-slate-500 dark:text-slate-400 text-sm font-medium mt-4">
-                  Will likely be flagged by Taleo and Workday systems due to missing hard skills.
+                <h1 className="text-indigo-400 font-black tracking-widest text-xs uppercase mb-2 bg-indigo-500/10 inline-block px-2.5 py-1 rounded">ResumeTailor.AI</h1>
+                <h2 className="text-2xl sm:text-3xl font-black tracking-tight mb-1 text-white">Audit Report</h2>
+                <p className="text-slate-400 font-medium flex items-center gap-1.5 text-sm break-all">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                  {file?.name || 'Resume.pdf'}
                 </p>
               </div>
-
-              {/* Data Breakdown & Actions */}
-              <div className="lg:col-span-8 flex flex-col gap-6">
-                
-                {/* Auto Fix Card (The SaaS Up-sell visual) */}
-                <div className="w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-1 rounded-2xl shadow-2xl relative overflow-hidden">
-                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/20 via-transparent to-transparent"></div>
-                   <div className="bg-slate-950/80 backdrop-blur-md p-6 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10 border border-indigo-500/20">
-                     <div>
-                       <h3 className="text-xl font-black text-white mb-1 flex items-center gap-2">
-                         <svg className="w-5 h-5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20"><path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.381z"></path></svg>
-                         AI Auto-Fix Ready
-                       </h3>
-                       <p className="text-indigo-200/70 text-sm font-medium">Let our LLM rewrite your weak bullets and inject missing keywords instantly.</p>
-                     </div>
-                     <button onClick={triggerAutoFix} className="whitespace-nowrap px-6 py-3 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)]">
-                       Optimize Resume Now
-                     </button>
-                   </div>
-                </div>
-
-                {/* Critical Issues Glass Cards */}
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-red-50 dark:bg-red-950/20 p-5 rounded-2xl border border-red-100 dark:border-red-900/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                      <h4 className="font-bold text-slate-900 dark:text-red-100 text-sm">Keyword Deficiency</h4>
-                    </div>
-                    <p className="text-xs text-slate-600 dark:text-red-200/70">Missing 8 core competencies required for this role level (e.g. "REST APIs").</p>
-                  </div>
-                  
-                  <div className="bg-amber-50 dark:bg-amber-950/20 p-5 rounded-2xl border border-amber-100 dark:border-amber-900/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                      <h4 className="font-bold text-slate-900 dark:text-amber-100 text-sm">Passive Phrasing</h4>
-                    </div>
-                    <p className="text-xs text-slate-600 dark:text-amber-200/70">Found 4 instances of "responsible for". Semantic engines score active verbs higher.</p>
-                  </div>
-                </div>
-
+              <div className="flex gap-3 w-full sm:w-auto" data-html2canvas-ignore="true">
+                <button onClick={downloadReport} disabled={isDownloading} className="flex-1 sm:flex-none px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                  {isDownloading ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      Generating...
+                    </>
+                  ) : 'Download PDF'}
+                </button>
+                <button onClick={resetScanner} className="flex-1 sm:flex-none px-5 py-2.5 bg-[#1f2937] hover:bg-[#374151] text-white border border-slate-700 rounded-lg text-sm font-bold transition-all shadow-sm">
+                  New Scan
+                </button>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* =========================================================================================
-            PHASE 4: FIXED / SUCCESS DASHBOARD (CHANGELOG)
-            ========================================================================================= */}
-        {scanState === 'fixed' && (
-          <div className="animate-[fadeIn_0.5s_ease-out] w-full max-w-5xl mx-auto pt-8">
-            
-            {/* Header */}
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 mb-6 border border-green-200 dark:border-green-500/20">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"></path></svg>
-              </div>
-              <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-3">Resume Optimized.</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium">Your document is now calibrated to bypass enterprise filtering algorithms.</p>
-            </div>
-
-            <div className="grid lg:grid-cols-12 gap-8 items-start">
+            <div id="panels-wrapper" className="flex flex-col lg:flex-row gap-8 items-start flex-1 overflow-hidden pb-4">
               
-              {/* Left: Score Upgrade Card */}
-              <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl text-center relative overflow-hidden">
-                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-green-400 to-emerald-500"></div>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8">Score Improvement</h3>
+              <div id="left-panel" className="w-full lg:w-[35%] flex flex-col gap-6 lg:h-[calc(100vh-140px)] lg:overflow-y-auto custom-scrollbar px-2 pb-10">
                 
-                <div className="flex items-center justify-center gap-6 mb-8">
-                  <div className="text-center opacity-40">
-                    <span className="block text-3xl font-mono font-black text-slate-500 line-through">68</span>
-                    <span className="text-[10px] font-bold uppercase">Old Score</span>
+                <div className="bg-[#111827] p-8 rounded-2xl border border-slate-800 shadow-xl flex flex-col items-center justify-center flex-shrink-0">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">Match Probability</h3>
+                  
+                  <div className="relative w-48 h-48 flex items-center justify-center mb-8">
+                    <svg className="w-full h-full transform -rotate-90 drop-shadow-xl" viewBox="0 0 130 130">
+                      <circle cx="65" cy="65" r={radius} className="stroke-slate-800/60" strokeWidth="8" fill="none" />
+                      <circle cx="65" cy="65" r={radius} stroke={scoreGradStart} strokeWidth="8" fill="none" strokeLinecap="round" style={{ strokeDasharray: circumference, strokeDashoffset: strokeDashoffset }} className="transition-all duration-1000 ease-out" />
+                    </svg>
+                    <div className="absolute flex flex-col items-center justify-center mt-1">
+                      <span className="text-6xl font-black font-mono tracking-tighter text-white">{score}</span>
+                      <span className={`text-[10px] font-bold ${scoreColor} uppercase tracking-widest px-2.5 py-0.5 rounded border border-current mt-2`}>{scoreLabel}</span>
+                    </div>
                   </div>
                   
-                  <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                  <div className="w-full space-y-4">
+                    {Object.entries(breakdown).map(([key, val]) => (
+                      <div key={key} className="w-full">
+                        <div className="flex justify-between text-xs font-bold mb-1.5">
+                          <span className="text-slate-400">{formatKey(key)}</span>
+                          <span className="text-slate-200">{val}/100</span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <div className={`h-full rounded-full ${val >= 80 ? 'bg-emerald-500' : val >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${val}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-[#111827] rounded-2xl border border-slate-800 shadow-xl flex flex-col flex-shrink-0 min-h-[400px]">
+                  <div className="bg-slate-800/30 px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+                    <h3 className="font-bold text-sm text-white">Parser Extraction</h3>
+                  </div>
+                  <div className="p-6 space-y-6 text-sm">
+                    {parsedData.contact_details && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Contact Details</span>
+                        <p className="text-slate-300 font-mono text-xs break-words bg-slate-900 p-3 rounded-lg border border-slate-800/50">{parsedData.contact_details}</p>
+                      </div>
+                    )}
+                    
+                    {parsedData.summary && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Professional Summary</span>
+                        <p className="text-slate-300 text-sm leading-relaxed">{parsedData.summary}</p>
+                      </div>
+                    )}
+
+                    {parsedData.hard_skills?.length > 0 && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Hard Skills</span>
+                        <div className="flex flex-wrap gap-2">
+                          {parsedData.hard_skills.map((skill, i) => (
+                            <span key={i} className="px-2.5 py-1 bg-indigo-500/10 text-indigo-300 rounded text-xs font-semibold border border-indigo-500/20">{skill}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedData.experience?.length > 0 && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Experience</span>
+                        <div className="space-y-3">
+                          {parsedData.experience.map((exp, i) => (
+                            <div key={i} className="bg-slate-900 p-3.5 rounded-lg border border-slate-800/50">
+                              <p className="font-bold text-sm text-white">{exp.role}</p>
+                              <p className="text-xs text-slate-400 mb-2">{exp.company} {exp.is_current ? '(Current)' : ''}</p>
+                              <ul className="list-disc pl-4 space-y-1.5 text-xs text-slate-300">
+                                {exp.bullets?.map((b, idx) => <li key={idx}>{b.text}</li>)}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedData.projects?.length > 0 && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Projects</span>
+                        <div className="space-y-3">
+                          {parsedData.projects.map((proj, i) => (
+                            <div key={i} className="bg-slate-900 p-3.5 rounded-lg border border-slate-800/50">
+                              <p className="font-bold text-sm text-white">{proj.name}</p>
+                              <p className="text-xs text-slate-400 mb-2">{proj.type_of_project}</p>
+                              <p className="text-xs text-slate-300 line-clamp-2">{proj.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {parsedData.education_details?.length > 0 && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Education</span>
+                        <ul className="list-disc pl-4 space-y-1.5 text-xs text-slate-300">
+                           {parsedData.education_details.map((edu, i) => <li key={i}>{edu}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <button 
+                    onClick={() => setShowRaw(!showRaw)} 
+                    data-html2canvas-ignore="true"
+                    className="w-full p-4 bg-slate-800/50 hover:bg-slate-800 border-t border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mt-auto"
+                  >
+                    {showRaw ? 'Hide Raw Text' : 'View Raw Document'}
+                    <svg className={`w-4 h-4 transform transition-transform ${showRaw ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </button>
                   
-                  <div className="text-center relative">
-                    <div className="absolute inset-0 bg-green-500/20 blur-xl rounded-full"></div>
-                    <span className="relative block text-6xl font-mono font-black text-green-500 drop-shadow-md">98</span>
-                    <span className="relative text-[10px] font-bold text-green-500 uppercase tracking-wider bg-green-500/10 px-2 py-0.5 rounded-sm mt-1 border border-green-500/20">Excellent</span>
-                  </div>
+                  {showRaw && (
+                    <div className="p-6 bg-[#0d1117] border-t border-slate-800">
+                      <pre className="text-xs font-mono text-slate-400 whitespace-pre-wrap break-words overflow-visible leading-relaxed">
+                        {rawText}
+                      </pre>
+                    </div>
+                  )}
                 </div>
 
-                <button className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold transition-all shadow-lg shadow-green-500/20 flex items-center justify-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                  Download ATS PDF
-                </button>
-                <button onClick={resetScanner} className="w-full mt-3 py-2 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white font-medium transition-colors">
-                  Analyze another file
-                </button>
               </div>
 
-              {/* Right: AI Audit Log (Changelog) */}
-              <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden">
-                <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-4 border-b border-slate-200 dark:border-slate-700/50">
-                  <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                    AI Optimization Log
-                  </h3>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div className="flex items-start gap-3 text-sm">
-                    <div className="mt-0.5 text-green-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></div>
-                    <p className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white font-medium">Re-formatted layout:</strong> Stripped multi-column tables and converted to a safe, single-column flow for Taleo compatibility.</p>
-                  </div>
-                  <div className="flex items-start gap-3 text-sm">
-                    <div className="mt-0.5 text-green-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></div>
-                    <p className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white font-medium">Injected keywords:</strong> Seamlessly added 12 high-value industry terms (e.g., "REST APIs", "CI/CD", "Agile") into contextually relevant bullet points.</p>
-                  </div>
-                  <div className="flex items-start gap-3 text-sm">
-                    <div className="mt-0.5 text-green-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg></div>
-                    <p className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white font-medium">Active Voice Conversion:</strong> Rewrote 4 passive sentences, replacing "responsible for" with high-impact action verbs ("Architected", "Spearheaded").</p>
-                  </div>
-                </div>
-              </div>
+              <div id="right-panel" className="w-full lg:w-[65%] flex flex-col gap-6 lg:h-[calc(100vh-140px)] lg:overflow-y-auto custom-scrollbar px-2 pb-10">
 
+                {missingKeywords.length > 0 && (
+                  <div className="bg-[#111827] rounded-2xl border border-rose-900/30 shadow-xl overflow-hidden relative flex-shrink-0">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500"></div>
+                    <div className="p-6 sm:p-8">
+                      <h3 className="text-xl font-black text-white mb-3 flex items-center gap-3">
+                        <div className="p-2 bg-rose-500/10 text-rose-400 rounded-md">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        </div>
+                        Missing Core Keywords
+                      </h3>
+                      <p className="text-sm text-slate-400 font-medium mb-6 lg:ml-12">ATS algorithms specifically scan for these terms based on your implied role.</p>
+                      <div className="flex flex-wrap gap-2.5 lg:ml-12">
+                        {missingKeywords.map((kw, i) => (
+                          <span key={i} className="px-4 py-2 bg-rose-500/5 text-rose-300 rounded-md text-sm font-semibold border border-rose-500/20">
+                            + {kw}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {suggestions.length > 0 && (
+                  <div className="bg-[#111827] rounded-2xl border border-slate-800 shadow-xl overflow-hidden relative flex-shrink-0">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
+                    <div className="p-6 sm:p-8 border-b border-slate-800/60">
+                      <h3 className="text-xl font-black text-white mb-3 flex items-center gap-3">
+                         <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        Impact & Metrics Analysis
+                      </h3>
+                      <p className="text-sm text-slate-400 font-medium lg:ml-12">Recruiters and semantic ATS engines prioritize quantifiable results over passive responsibilities.</p>
+                    </div>
+                    <div className="divide-y divide-slate-800/60 bg-transparent">
+                      {suggestions.map((sug, i) => (
+                        <div key={i} className="p-6 sm:p-8">
+                          <span className="inline-block px-3 py-1 bg-slate-800 text-slate-300 rounded text-xs font-bold uppercase tracking-widest mb-4">Target: {sug.section}</span>
+                          <div className="grid lg:grid-cols-2 gap-5">
+                            <div className="p-5 bg-slate-900/50 rounded-xl border border-rose-900/20">
+                              <span className="flex items-center gap-2 text-xs font-bold text-rose-500 uppercase tracking-widest mb-3">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                Current Phrasing
+                              </span>
+                              <p className="text-slate-400 text-sm leading-relaxed">{sug.original_text}</p>
+                            </div>
+                            <div className="p-5 bg-indigo-500/5 rounded-xl border border-indigo-500/20">
+                              <span className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                Optimized Structure
+                              </span>
+                              <p className="text-slate-200 text-sm leading-relaxed font-medium">{sug.suggested_rewrite}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {semanticErrors.length > 0 && (
+                  <div className="bg-[#111827] rounded-2xl border border-slate-800 shadow-xl overflow-hidden relative flex-shrink-0">
+                    <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
+                    <div className="p-6 sm:p-8 border-b border-slate-800/60">
+                      <h3 className="text-xl font-black text-white mb-3 flex items-center gap-3">
+                         <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </div>
+                        Formatting & Tone Flaws
+                      </h3>
+                      <p className="text-sm text-slate-400 font-medium lg:ml-12">Detected weak action verbs, personal pronouns, or buzzwords that penalize your score.</p>
+                    </div>
+                    <div className="divide-y divide-slate-800/60">
+                      {semanticErrors.map((err, i) => (
+                        <div key={i} className="p-6 sm:p-8 flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+                          <div className="flex-1 w-full">
+                            <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Issue in {err.section}</span>
+                            <p className="text-sm text-slate-400 line-through decoration-rose-500/50 leading-relaxed">{err.original_text}</p>
+                          </div>
+                          <div className="hidden sm:block text-slate-700 flex-shrink-0">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                          </div>
+                          <div className="flex-1 w-full bg-amber-500/5 p-5 rounded-xl border border-amber-500/10">
+                            <p className="text-sm font-medium text-amber-100 leading-relaxed">{err.suggested_rewrite}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
             </div>
           </div>
         )}
 
       </div>
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+      `}} />
     </div>
   );
 }

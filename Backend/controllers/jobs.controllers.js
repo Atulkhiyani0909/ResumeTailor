@@ -1,5 +1,5 @@
 import Job from "../models/jobs.models.js";
-
+import mongoose from "mongoose";
 export const getAllJobs = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -38,6 +38,8 @@ export const getAllJobs = async (req, res) => {
 export const getJobById = async (req, res) => {
     try {
         const { id } = req.params;
+        console.log(id);
+        
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
