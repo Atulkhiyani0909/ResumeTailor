@@ -15,9 +15,11 @@ app.use(express.json())
 
 import jobsRouters from './routers/job.routers.js'
 import atsRoutes from './routers/ats.route.js'
+import jdRoutes from './routers/jdmatch.routes.js'
 
 app.use('/api/jobs',jobsRouters);
 app.use('/api/ats', atsRoutes);
+app.use('/api/jd-matcher', jdRoutes);
 
 app.listen(3000,()=>{
     console.log('app is running on port 3000');
