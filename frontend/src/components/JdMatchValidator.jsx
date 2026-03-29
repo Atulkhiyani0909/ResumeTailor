@@ -18,6 +18,42 @@ export default function JdMatchValidator() {
   const [isAILoading, setIsAILoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // 1. LOAD FROM LOCAL STORAGE ON MOUNT
+  useEffect(() => {
+    const savedData = localStorage.getItem('jdMatchHistory');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        setAnalysisResults(parsed.analysisResults);
+        setMatchScore(parsed.matchScore);
+        setJdText(parsed.jdText);
+        setFile({ name: parsed.fileName }); // Mock file object just for UI display
+        
+        if (parsed.fixedResume) {
+          setFixedResume(parsed.fixedResume);
+          setStep('preview');
+        } else if (parsed.analysisResults) {
+          setStep('results');
+        }
+      } catch (e) {
+        console.error("Failed to load saved JD match results", e);
+      }
+    }
+  }, []);
+
+  // 2. CLEAR LOCAL STORAGE ON RESET
+  const resetScanner = () => {
+    localStorage.removeItem('jdMatchHistory');
+    setFile(null);
+    setJdText('');
+    setAnalysisResults(null);
+    setFixedResume(null);
+    setMatchScore(0);
+    setStep('input');
+    setScanProgress(0);
+    setUserFeedback('');
+  };
+
   const handleStartAnalysis = async () => {
     if (!file || !jdText.trim()) return alert("Please upload a resume and paste a JD.");
 
@@ -35,14 +71,19 @@ export default function JdMatchValidator() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      console.log(response);
-
-
       const payload = response.data;
       const fullState = payload.response || payload.data || payload;
 
       setAnalysisResults(fullState);
       setMatchScore(fullState.match_score || 0);
+
+      // 3. SAVE INITIAL ANALYSIS TO LOCAL STORAGE
+      localStorage.setItem('jdMatchHistory', JSON.stringify({
+        fileName: file.name,
+        jdText: jdText,
+        analysisResults: fullState,
+        matchScore: fullState.match_score || 0
+      }));
 
       setIsAILoading(false);
     } catch (error) {
@@ -67,20 +108,26 @@ export default function JdMatchValidator() {
         feedback: actionType === 'rewrite' ? userFeedback : null
       });
 
-      console.log(response);
-
       const payload = response.data;
       const fullState = payload.response || payload.data || payload;
+      const newScore = fullState.match_score || matchScore;
 
       setFixedResume(fullState.tailored_resume_content);
-
-      if (fullState.match_score) {
-        setMatchScore(fullState.match_score);
-      }
+      setMatchScore(newScore);
 
       if (actionType === 'rewrite') {
         setUserFeedback('');
       }
+
+      // 4. SAVE TAILORED RESUME TO LOCAL STORAGE
+      localStorage.setItem('jdMatchHistory', JSON.stringify({
+        fileName: file?.name || 'Resume.pdf',
+        jdText: jdText,
+        analysisResults: analysisResults, 
+        matchScore: newScore,
+        fixedResume: fullState.tailored_resume_content
+      }));
+
       setIsAILoading(false);
     } catch (error) {
       console.error(error);
@@ -97,20 +144,6 @@ export default function JdMatchValidator() {
       await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }).catch(e => console.warn('Backend logging skipped', e));
 
       const resumePreview = document.getElementById('resume-preview');
-
-      // Cache original styles
-      const originalStyle = {
-        height: resumePreview.style.height,
-        maxHeight: resumePreview.style.maxHeight,
-        overflow: resumePreview.style.overflow,
-      };
-
-      // Force element to full expanded height
-      resumePreview.style.height = 'max-content';
-      resumePreview.style.maxHeight = 'none';
-      resumePreview.style.overflow = 'visible';
-
-      // CRITICAL FIX: Wait for the browser to physically paint the DOM changes
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const dataUrl = await toPng(resumePreview, {
@@ -119,11 +152,6 @@ export default function JdMatchValidator() {
         pixelRatio: 2,
         style: { transform: 'scale(1)', transformOrigin: 'top left' }
       });
-
-      // Instantly restore the scrollbar view
-      resumePreview.style.height = originalStyle.height;
-      resumePreview.style.maxHeight = originalStyle.maxHeight;
-      resumePreview.style.overflow = originalStyle.overflow;
 
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -183,7 +211,7 @@ export default function JdMatchValidator() {
   }, [step, isAILoading, isAutoFixing]);
 
   return (
-    <div className={`relative w-full bg-[#060B19] text-slate-200 font-sans selection:bg-indigo-500/30 pt-24 ${step === 'preview' ? 'lg:h-screen lg:overflow-hidden pb-0' : 'min-h-screen overflow-x-hidden pb-20'}`}>
+    <div className="relative w-full bg-[#060B19] text-slate-200 font-sans selection:bg-indigo-500/30 pt-24 min-h-screen overflow-x-hidden pb-24">
       <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-30 pointer-events-none"></div>
       <div className="absolute top-0 right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/10 blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-0 left-[-10%] w-[40%] h-[40%] rounded-full bg-cyan-400/10 blur-[120px] pointer-events-none"></div>
@@ -226,12 +254,11 @@ export default function JdMatchValidator() {
                     <Show when={'signed-out'}>
                       <label className="flex flex-col items-center justify-center w-full h-full min-h-[200px] border-2 border-dashed border-indigo-500/30 rounded-2xl bg-indigo-500/5 hover:bg-indigo-500/10 transition-all cursor-pointer group">
                         <div className="flex flex-col items-center justify-center text-center p-6">
-
-                          <p className="text-sm font-bold text-slate-300">Sign Up to Upload the Resume </p>
+                          <p className="text-sm font-bold text-slate-300 mb-4">Sign Up to Upload the Resume</p>
+                          <div className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-full shadow-[0_0_15px_rgba(79,70,229,0.4)] hover:shadow-[0_0_25px_rgba(79,70,229,0.6)] hover:-translate-y-0.5">
+                            <SignUpButton mode="modal" />
+                          </div>
                         </div>
-                        <button className="hidden sm:inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-blue-600 rounded-full shadow-[0_0_15px_rgba(79,70,229,0.4)] hover:shadow-[0_0_25px_rgba(79,70,229,0.6)] hover:-translate-y-0.5">
-                          <SignUpButton />
-                        </button>
                       </label>
                     </Show>
                   </div>
@@ -275,6 +302,16 @@ export default function JdMatchValidator() {
 
         {step === 'results' && analysisResults && (
           <div className="animate-[fadeIn_0.5s_ease-out] w-full max-w-[85rem] mx-auto flex flex-col gap-6">
+
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-2 gap-4 border-b border-white/5 pb-5 px-2">
+              <div>
+                <h1 className="text-indigo-400 font-black tracking-widest text-xs uppercase mb-2 bg-indigo-500/10 inline-block px-2.5 py-1 rounded">JD Matcher AI</h1>
+                <h2 className="text-2xl sm:text-3xl font-black tracking-tight mb-1 text-white">Match Analysis</h2>
+              </div>
+              <button onClick={resetScanner} className="px-5 py-2.5 bg-[#161E31] hover:bg-slate-800 text-white border border-white/10 rounded-lg text-sm font-bold transition-all shadow-sm">
+                New Match
+              </button>
+            </div>
 
             <div className="grid lg:grid-cols-12 gap-6">
 
@@ -479,13 +516,22 @@ export default function JdMatchValidator() {
         )}
 
         {step === 'preview' && fixedResume && (
-          <div className="animate-[fadeIn_0.5s_ease-out] w-full h-full flex flex-col">
-            <div className="flex flex-col lg:flex-row gap-8 items-start flex-1 min-h-0">
+          <div className="animate-[fadeIn_0.5s_ease-out] w-full pt-7 flex flex-col">
+            
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4 border-b border-white/5 pb-5 px-2">
+              <div>
+                <h1 className="text-indigo-400 font-black tracking-widest text-xs uppercase mb-2 bg-indigo-500/10 inline-block px-2.5 py-1 rounded">JD Matcher AI</h1>
+                <h2 className="text-2xl sm:text-3xl font-black tracking-tight mb-1 text-white">Tailored Resume</h2>
+              </div>
+              <button onClick={resetScanner} className="px-5 py-2.5 bg-[#161E31] hover:bg-slate-800 text-white border border-white/10 rounded-lg text-sm font-bold transition-all shadow-sm">
+                New Match
+              </button>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-8 items-start w-full pb-4">
 
               {/* Left Column - Actions */}
-              <div className="w-full lg:w-[35%] flex flex-col gap-6 lg:h-full lg:overflow-y-auto custom-scrollbar pr-2 pb-10">
-
-                {/* Score block completely removed! */}
+              <div className="w-full lg:w-[35%] flex flex-col gap-6 px-2 pb-10">
 
                 <div className="bg-[#0F1629] p-8 rounded-2xl border border-white/5 flex-shrink-0">
                   <div className="mb-8 border-b border-white/10 pb-6 text-center">
@@ -530,8 +576,8 @@ export default function JdMatchValidator() {
               </div>
 
               {/* Right Column - Resume PDF View */}
-              <div className="w-full lg:w-[65%] lg:h-full lg:overflow-y-auto custom-scrollbar pr-2 pb-10">
-                <div id="resume-preview" className="bg-white text-slate-900 p-10 md:p-14 rounded-xl shadow-[0_0_40px_rgba(0,0,0,0.4)] min-h-[1056px] w-full max-w-[816px] mx-auto font-serif">
+              <div className="w-full lg:w-[65%] flex flex-col gap-6 px-2 pb-10">
+                <div id="resume-preview" className="bg-white text-slate-900 p-10 md:p-14 rounded-xl shadow-[0_0_40px_rgba(0,0,0,0.4)] min-h-[1056px] w-full max-w-[816px] mx-auto font-serif h-max">
 
                   <div className="text-center border-b-2 border-slate-800 pb-5 mb-6">
                     <h1 className="text-3xl font-bold uppercase tracking-widest text-slate-900 mb-2">Tailored Resume</h1>
