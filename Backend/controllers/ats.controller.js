@@ -20,7 +20,7 @@ try {
 
     console.log(securePdfUrl);
     
-    const pythonResponse = await axios.post('http://localhost:8000/api/calculate-score', {
+    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/calculate-score', {
       resume_url: securePdfUrl
     });
 
