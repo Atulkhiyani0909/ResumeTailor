@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { Show, SignUpButton } from '@clerk/react';
 
 export default function AtsChecker() {
   const [file, setFile] = useState(null);
@@ -15,7 +16,7 @@ export default function AtsChecker() {
   const handleUpload = async (e) => {
     const uploadedFile = e.target.files[0] || e.dataTransfer?.files[0];
     if (!uploadedFile) return;
-    
+
     setFile(uploadedFile);
     setScanState('scanning');
     setScanProgress(0);
@@ -25,8 +26,8 @@ export default function AtsChecker() {
     try {
       setTerminalLogs(prev => [...prev, '[NETWORK] Transmitting encrypted payload to server...'].slice(-5));
       const formData = new FormData();
-      formData.append('resume', uploadedFile); 
-      
+      formData.append('resume', uploadedFile);
+
       const response = await axios.post('http://localhost:3000/api/ats/analyze-resume', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -40,7 +41,7 @@ export default function AtsChecker() {
   };
 
   const handleDragOver = (e) => e.preventDefault();
-  
+
   const handleDrop = (e) => {
     e.preventDefault();
     handleUpload(e);
@@ -51,13 +52,13 @@ export default function AtsChecker() {
       const interval = setInterval(() => {
         setScanProgress((prev) => {
           if (!atsResults && prev >= 90) return 90;
-          if (atsResults && prev < 100) return prev + 2; 
+          if (atsResults && prev < 100) return prev + 2;
           if (prev >= 100) {
             clearInterval(interval);
             setTimeout(() => setScanState('complete'), 400);
             return 100;
           }
-          
+
           const newProgress = prev + 1;
           const logs = [...terminalLogs];
           if (newProgress === 10) logs.push('[PARSER] Extracting text nodes and metadata...');
@@ -65,7 +66,7 @@ export default function AtsChecker() {
           if (newProgress === 60) logs.push('[VECTOR] Cross-referencing industry keywords...');
           if (newProgress === 85 && !atsResults) logs.push('[NETWORK] Waiting for AI model response...');
           if (logs.length > terminalLogs.length) setTerminalLogs(logs.slice(-5));
-          
+
           return newProgress;
         });
       }, 50);
@@ -84,7 +85,7 @@ export default function AtsChecker() {
 
   const downloadReport = async () => {
     setIsDownloading(true);
-    
+
     // 1. Grab all the containers that restrict height and control scrolling
     const reportContainer = document.getElementById('report-container');
     const panelsWrapper = document.getElementById('panels-wrapper');
@@ -115,7 +116,7 @@ export default function AtsChecker() {
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfPageHeight = pdf.internal.pageSize.getHeight();
-      
+
       // Calculate the image height scaled to the PDF's A4 width
       const imgProps = pdf.getImageProperties(dataUrl);
       const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
@@ -145,7 +146,7 @@ export default function AtsChecker() {
       if (panelsWrapper) panelsWrapper.classList.add('flex-1', 'overflow-hidden');
       if (leftPanel) leftPanel.classList.add('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
       if (rightPanel) rightPanel.classList.add('lg:h-[calc(100vh-140px)]', 'lg:overflow-y-auto');
-      
+
       setIsDownloading(false);
     }
   };
@@ -157,11 +158,11 @@ export default function AtsChecker() {
   const semanticErrors = atsResults?.semantic_error || [];
   const parsedData = atsResults?.parsed_resume_structured || {};
   const rawText = atsResults?.resume_content_raw || '';
-  
+
   let scoreColor = "text-rose-500";
   let scoreLabel = "High Risk";
   let scoreGradStart = "#f43f5e";
-  
+
   if (score >= 60) {
     scoreColor = "text-amber-500";
     scoreLabel = "Average";
@@ -181,47 +182,59 @@ export default function AtsChecker() {
 
   return (
     <div id="main-wrapper" className={`relative w-full bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 font-sans selection:bg-indigo-500/30 pt-16 ${scanState === 'complete' ? 'lg:h-screen lg:overflow-hidden pb-0' : 'min-h-screen overflow-x-hidden pb-24'}`}>
-      
+
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0" data-html2canvas-ignore="true">
         <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(#475569 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
         <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-full max-w-4xl h-[600px] bg-indigo-500/10 blur-[120px] rounded-full"></div>
       </div>
 
       <div className="relative z-10 w-full max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 h-full flex flex-col">
-        
-        {scanState === 'idle' && (
-           <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center justify-between animate-[fadeIn_0.5s_ease-out] pt-12 lg:pt-20">
-             <div className="w-full lg:w-1/2 text-center lg:text-left">
-               <div className="inline-flex items-center space-x-2 bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-4 py-2 rounded-full mb-8 shadow-sm">
-                 <span className="flex h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
-                 <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Enterprise ATS Scanner</span>
-               </div>
-               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-6 tracking-tight leading-[1.1]">
-                 Beat the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-500">Bots.</span> <br />
-                 Land the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400">Interview.</span>
-               </h1>
-               <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-10 font-medium leading-relaxed max-w-xl mx-auto lg:mx-0">
-                 Upload your resume to instantly reveal hidden formatting errors, missing keywords, and structural flaws that cause ATS rejections.
-               </p>
-             </div>
 
-             <div className="w-full lg:w-1/2 max-w-md mx-auto relative group" onDragOver={handleDragOver} onDrop={handleDrop}>
-               <div className="absolute inset-0 bg-gradient-to-b from-indigo-500 to-cyan-400 rounded-3xl blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
-               <div className="relative bg-white dark:bg-[#111827]/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 rounded-3xl shadow-2xl flex flex-col items-center justify-center text-center">
-                 <div className="w-16 h-16 mb-6 rounded-2xl bg-indigo-50 dark:bg-[#1f2937] shadow-inner border border-indigo-100 dark:border-slate-700 flex items-center justify-center group-hover:-translate-y-2 transition-transform duration-300">
-                   <svg className="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                 </div>
-                 <h3 className="text-xl font-black mb-2">Upload Resume</h3>
-                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8">PDF or DOCX up to 5MB</p>
-                 <label className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2">
-                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                   Browse Files
-                   <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
-                 </label>
-                 <p className="mt-5 text-[10px] font-semibold text-slate-400">Strictly confidential. No data is stored.</p>
-               </div>
-             </div>
-           </div>
+        {scanState === 'idle' && (
+          <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-center justify-between animate-[fadeIn_0.5s_ease-out] pt-12 lg:pt-20">
+            <div className="w-full lg:w-1/2 text-center lg:text-left">
+              <div className="inline-flex items-center space-x-2 bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-4 py-2 rounded-full mb-8 shadow-sm">
+                <span className="flex h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Enterprise ATS Scanner</span>
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-6 tracking-tight leading-[1.1]">
+                Beat the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-500">Bots.</span> <br />
+                Land the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-400">Interview.</span>
+              </h1>
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-10 font-medium leading-relaxed max-w-xl mx-auto lg:mx-0">
+                Upload your resume to instantly reveal hidden formatting errors, missing keywords, and structural flaws that cause ATS rejections.
+              </p>
+            </div>
+
+            <div className="w-full lg:w-1/2 max-w-md mx-auto relative group" onDragOver={handleDragOver} onDrop={handleDrop}>
+              <div className="absolute inset-0 bg-gradient-to-b from-indigo-500 to-cyan-400 rounded-3xl blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
+              <div className="relative bg-white dark:bg-[#111827]/80 backdrop-blur-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 rounded-3xl shadow-2xl flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 mb-6 rounded-2xl bg-indigo-50 dark:bg-[#1f2937] shadow-inner border border-indigo-100 dark:border-slate-700 flex items-center justify-center group-hover:-translate-y-2 transition-transform duration-300">
+                  <svg className="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                </div>
+                <h3 className="text-xl font-black mb-2">Upload Resume</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8">PDF or DOCX up to 2MB</p>
+                <Show when={'signed-in'}>
+                  <label className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Browse Files
+                    <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
+                  </label>
+                </Show>
+
+                <Show when={'signed-out'}>
+                  <h2>Sign Up to Upload the Resume </h2>
+                  <br />
+                  <label className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2">
+
+                    <SignUpButton />
+                    <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
+                  </label>
+                </Show>
+                <p className="mt-5 text-[10px] font-semibold text-slate-400">Strictly confidential. No data is stored.</p>
+              </div>
+            </div>
+          </div>
         )}
 
         {scanState === 'scanning' && (
@@ -262,7 +275,7 @@ export default function AtsChecker() {
 
         {scanState === 'complete' && atsResults && (
           <div id="report-container" className="animate-[fadeIn_0.5s_ease-out] w-full pt-7 flex flex-col h-full bg-[#0B0F19] overflow-hidden">
-            
+
             <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4 border-b border-slate-200 dark:border-slate-800/60 pb-5 flex-shrink-0 px-2">
               <div>
                 <h1 className="text-indigo-400 font-black tracking-widest text-xs uppercase mb-2 bg-indigo-500/10 inline-block px-2.5 py-1 rounded">ResumeTailor.AI</h1>
@@ -288,12 +301,12 @@ export default function AtsChecker() {
             </div>
 
             <div id="panels-wrapper" className="flex flex-col lg:flex-row gap-8 items-start flex-1 overflow-hidden pb-4">
-              
+
               <div id="left-panel" className="w-full lg:w-[35%] flex flex-col gap-6 lg:h-[calc(100vh-140px)] lg:overflow-y-auto custom-scrollbar px-2 pb-10">
-                
+
                 <div className="bg-[#111827] p-8 rounded-2xl border border-slate-800 shadow-xl flex flex-col items-center justify-center flex-shrink-0">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">Match Probability</h3>
-                  
+
                   <div className="relative w-48 h-48 flex items-center justify-center mb-8">
                     <svg className="w-full h-full transform -rotate-90 drop-shadow-xl" viewBox="0 0 130 130">
                       <circle cx="65" cy="65" r={radius} className="stroke-slate-800/60" strokeWidth="8" fill="none" />
@@ -304,7 +317,7 @@ export default function AtsChecker() {
                       <span className={`text-[10px] font-bold ${scoreColor} uppercase tracking-widest px-2.5 py-0.5 rounded border border-current mt-2`}>{scoreLabel}</span>
                     </div>
                   </div>
-                  
+
                   <div className="w-full space-y-4">
                     {Object.entries(breakdown).map(([key, val]) => (
                       <div key={key} className="w-full">
@@ -331,7 +344,7 @@ export default function AtsChecker() {
                         <p className="text-slate-300 font-mono text-xs break-words bg-slate-900 p-3 rounded-lg border border-slate-800/50">{parsedData.contact_details}</p>
                       </div>
                     )}
-                    
+
                     {parsedData.summary && (
                       <div>
                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Professional Summary</span>
@@ -381,26 +394,26 @@ export default function AtsChecker() {
                         </div>
                       </div>
                     )}
-                    
+
                     {parsedData.education_details?.length > 0 && (
                       <div>
                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Education</span>
                         <ul className="list-disc pl-4 space-y-1.5 text-xs text-slate-300">
-                           {parsedData.education_details.map((edu, i) => <li key={i}>{edu}</li>)}
+                          {parsedData.education_details.map((edu, i) => <li key={i}>{edu}</li>)}
                         </ul>
                       </div>
                     )}
                   </div>
 
-                  <button 
-                    onClick={() => setShowRaw(!showRaw)} 
+                  <button
+                    onClick={() => setShowRaw(!showRaw)}
                     data-html2canvas-ignore="true"
                     className="w-full p-4 bg-slate-800/50 hover:bg-slate-800 border-t border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-widest transition-colors flex items-center justify-center gap-2 mt-auto"
                   >
                     {showRaw ? 'Hide Raw Text' : 'View Raw Document'}
                     <svg className={`w-4 h-4 transform transition-transform ${showRaw ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                   </button>
-                  
+
                   {showRaw && (
                     <div className="p-6 bg-[#0d1117] border-t border-slate-800">
                       <pre className="text-xs font-mono text-slate-400 whitespace-pre-wrap break-words overflow-visible leading-relaxed">
@@ -441,7 +454,7 @@ export default function AtsChecker() {
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
                     <div className="p-6 sm:p-8 border-b border-slate-800/60">
                       <h3 className="text-xl font-black text-white mb-3 flex items-center gap-3">
-                         <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md">
+                        <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-md">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                         </div>
                         Impact & Metrics Analysis
@@ -479,7 +492,7 @@ export default function AtsChecker() {
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
                     <div className="p-6 sm:p-8 border-b border-slate-800/60">
                       <h3 className="text-xl font-black text-white mb-3 flex items-center gap-3">
-                         <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md">
+                        <div className="p-2 bg-amber-500/10 text-amber-400 rounded-md">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                         </div>
                         Formatting & Tone Flaws
@@ -511,7 +524,8 @@ export default function AtsChecker() {
         )}
 
       </div>
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }

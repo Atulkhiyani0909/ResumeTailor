@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Show, SignIn, SignInButton, SignUpButton } from '@clerk/react';
 
 export default function JobsAgent() {
   const navigate = useNavigate();
@@ -20,13 +21,13 @@ export default function JobsAgent() {
     async function get_jobs() {
       // 1. Check Memory First
       const cachedJobs = sessionStorage.getItem('aiMatchedJobs');
-      
+
       if (cachedJobs) {
         setJobs(JSON.parse(cachedJobs));
         setIsMatched(true);
         setSortBy('match');
         setLoadingJobs(false);
-        return; 
+        return;
       }
 
       // 2. If no memory, fetch from DB
@@ -42,7 +43,7 @@ export default function JobsAgent() {
         setLoadingJobs(false);
       }
     }
-    
+
     get_jobs();
   }, []);
 
@@ -99,7 +100,7 @@ export default function JobsAgent() {
           }));
 
           setJobs(scoredJobs);
-          
+
           // 🔥 CRITICAL FIX: Save to Memory! 
           sessionStorage.setItem('aiMatchedJobs', JSON.stringify(scoredJobs));
 
@@ -151,32 +152,27 @@ export default function JobsAgent() {
               <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Autonomous Sourcing</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2">Job Discovery Board</h1>
+            {/* Reduced Title Size Here */}
+            <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-2">Job Discovery Board</h1>
             <p className="text-slate-400 text-lg">Find your next role. Click any job to view details and launch the Auto Apply Agent.</p>
           </div>
 
-          {!isMatched && !matchLoading && !loadingJobs && (
-            <label className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl font-black transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 cursor-pointer flex items-center justify-center gap-2 group whitespace-nowrap">
-              <svg className="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-              Smart Match Resume
-              <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleSmartMatch} />
-            </label>
-          )}
+          <Show when={'signed-in'}>
+            {!isMatched && !matchLoading && !loadingJobs && (
+              <div className="flex flex-col items-center md:items-end">
+                <label className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl font-black transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 cursor-pointer flex items-center justify-center gap-2 group whitespace-nowrap">
+                  <svg className="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                  Smart Match Resume
+                  <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleSmartMatch} />
+                </label>
+                {/* Added Explanatory Note Here */}
+                <p className="text-[11px] text-slate-500 font-medium mt-3 max-w-[250px] text-center md:text-right leading-relaxed">
+                  <strong className="text-cyan-400">What is this?</strong> Upload your resume and our AI will vectorize it to instantly surface and rank the jobs that best match your experience.
+                </p>
+              </div>
+            )}
+          </Show>
 
-          {isMatched && (
-            <button
-              onClick={() => {
-                // 🔥 CRITICAL FIX: Clear Memory!
-                sessionStorage.removeItem('aiMatchedJobs');
-                setIsMatched(false);
-                setSortBy('recent');
-                window.location.reload();
-              }}
-              className="px-6 py-4 bg-[#161E31] hover:bg-[#1E293B] border border-white/10 text-white rounded-xl font-bold transition-all whitespace-nowrap"
-            >
-              Clear Match Results
-            </button>
-          )}
         </div>
 
         {isMatched && (
@@ -259,65 +255,116 @@ export default function JobsAgent() {
           </div>
         )}
 
-        {!loadingJobs && processedJobs.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-[fadeIn_0.5s_ease-out]">
-            {processedJobs.map((job) => (
-              <div key={job._id || job.id} className="relative bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 rounded-3xl p-6 hover:border-indigo-500/50 transition-all shadow-xl group flex flex-col h-full pt-12 overflow-hidden cursor-default">
+        <Show when={'signed-in'}>
+          {!loadingJobs && processedJobs.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-[fadeIn_0.5s_ease-out]">
+              {processedJobs.map((job) => (
+                <div key={job._id || job.id} className="relative bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 rounded-3xl p-6 hover:border-indigo-500/50 transition-all shadow-xl group flex flex-col h-full pt-12 overflow-hidden cursor-default">
 
-                <div className="absolute top-0 right-0 bg-gradient-to-bl from-indigo-600 to-cyan-500 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black text-white uppercase tracking-widest shadow-lg z-10">
-                  {job.source_from}
-                </div>
-
-                {isMatched && (
-                  <div className={`absolute top-4 left-4 flex flex-col items-center justify-center w-10 h-10 rounded-full border-2 z-10 ${job.matchScore > 80 ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : job.matchScore > 65 ? 'border-amber-500/50 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'border-rose-500/50 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(243,62,113,0.2)]'}`}>
-                    <span className="text-sm font-black leading-none">{job.matchScore}%</span>
+                  <div className="absolute top-0 right-0 bg-gradient-to-bl from-indigo-600 to-cyan-500 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black text-white uppercase tracking-widest shadow-lg z-10">
+                    {job.source_from}
                   </div>
-                )}
 
-                <div className={`mb-4 flex-1 ${isMatched ? 'mt-4' : ''}`}>
-                  <h4 className="text-xl font-black text-cyan-400 mb-1">{job.company_name}</h4>
+                  {isMatched && (
+                    <div className={`absolute top-4 left-4 flex flex-col items-center justify-center w-10 h-10 rounded-full border-2 z-10 ${job.matchScore > 80 ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : job.matchScore > 65 ? 'border-amber-500/50 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'border-rose-500/50 bg-rose-500/10 text-rose-400 shadow-[0_0_15px_rgba(243,62,113,0.2)]'}`}>
+                      <span className="text-sm font-black leading-none">{job.matchScore}%</span>
+                    </div>
+                  )}
 
-                  <h3 className="text-lg font-bold text-white leading-tight mb-3 line-clamp-2 group-hover:text-indigo-300 transition-colors">
-                    {job.title}
-                  </h3>
+                  <div className={`mb-4 flex-1 ${isMatched ? 'mt-4' : ''}`}>
+                    <h4 className="text-xl font-black text-cyan-400 mb-1">{job.company_name}</h4>
 
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-4">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    {job.location}
-                  </span>
+                    <h3 className="text-lg font-bold text-white leading-tight mb-3 line-clamp-2 group-hover:text-indigo-300 transition-colors">
+                      {job.title}
+                    </h3>
 
-                  <p className="text-sm text-slate-400 leading-relaxed line-clamp-3">
-                    {job.description}
-                  </p>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-4">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                      {job.location}
+                    </span>
+
+                    <p className="text-sm text-slate-400 leading-relaxed line-clamp-3">
+                      {job.description}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => handleViewDetails(job._id || job.id, job.matchScore)}
+                    className="w-full py-3 mt-auto bg-[#161E31] hover:bg-indigo-600 border border-white/5 hover:border-indigo-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2 group/btn"
+                  >
+                    View Details
+                    <svg className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7"></path></svg>
+                  </button>
+
                 </div>
+              ))}
+            </div>
+          )}
 
-                <button
-                  onClick={() => handleViewDetails(job._id || job.id, job.matchScore)}
-                  className="w-full py-3 mt-auto bg-[#161E31] hover:bg-indigo-600 border border-white/5 hover:border-indigo-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex items-center justify-center gap-2 group/btn"
-                >
-                  View Details
-                  <svg className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7"></path></svg>
-                </button>
-
+          {matchLoading && (
+            <div className="fixed inset-0 z-50 bg-[#020617]/90 backdrop-blur-xl flex flex-col items-center justify-center animate-[fadeIn_0.3s_ease-out]">
+              <div className="w-24 h-24 relative mb-8">
+                <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></div>
               </div>
-            ))}
-          </div>
-        )}
-
-        {matchLoading && (
-          <div className="fixed inset-0 z-50 bg-[#020617]/90 backdrop-blur-xl flex flex-col items-center justify-center animate-[fadeIn_0.3s_ease-out]">
-            <div className="w-24 h-24 relative mb-8">
-              <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></div>
+              <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Vectorizing Profile Data...</h2>
+              <p className="text-indigo-400 font-mono text-sm mb-8">Cross-referencing global job cache</p>
+              <div className="w-64 h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-75" style={{ width: `${scanProgress}%` }}></div>
+              </div>
             </div>
-            <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Vectorizing Profile Data...</h2>
-            <p className="text-indigo-400 font-mono text-sm mb-8">Cross-referencing global job cache</p>
-            <div className="w-64 h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-75" style={{ width: `${scanProgress}%` }}></div>
+          )}
+        </Show>
+        <Show when={'signed-out'}>
+          <div className="relative w-full max-w-md mx-auto p-8 md:p-10 rounded-[2.5rem] bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 shadow-2xl overflow-hidden group hover:border-white/10 transition-all duration-500 animate-[fadeIn_0.5s_ease-out]">
+
+
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-[50px] transition-transform duration-700 group-hover:scale-125 pointer-events-none"></div>
+            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-[50px] pointer-events-none"></div>
+
+            <div className="relative z-10 flex flex-col items-center text-center">
+
+
+              <div className="w-16 h-16 rounded-2xl bg-[#161E31] border border-white/5 flex items-center justify-center text-indigo-400 mb-6 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:shadow-[0_0_25px_rgba(99,102,241,0.4)] group-hover:-translate-y-1 transition-all duration-300">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+              </div>
+
+
+              <div className="inline-flex items-center space-x-2 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-full mb-4">
+                <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">Authentication Required</span>
+              </div>
+
+              <h3 className="text-3xl font-black text-white tracking-tight mb-3">
+                Unlock Your Agent
+              </h3>
+
+              <p className="text-sm text-slate-400 leading-relaxed mb-8">
+                Create an account to save your tailored resumes, launch autonomous apply agents, and track your match scores.
+              </p>
+
+
+              <div className="w-full">
+
+                <SignUpButton
+                  mode="modal"
+                  forceRedirectUrl="/jobs-apply"
+                  signInForceRedirectUrl="/jobs-apply"
+                >
+                  <button className="w-full py-4 bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white rounded-xl font-black text-sm transition-all duration-300 shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 flex items-center justify-center gap-2 group">
+                    Create Free Account
+                    <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                  </button>
+                </SignUpButton>
+              </div>
+
             </div>
           </div>
-        )}
-
+        </Show>
       </div>
     </div>
   );
