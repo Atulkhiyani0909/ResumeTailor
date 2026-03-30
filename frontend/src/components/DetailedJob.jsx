@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { useAuth } from '@clerk/react';
 import { JobHeader } from './jobheader';
 import { CollapsibleSection } from './collapsableSection';
 import { JobDescriptionView } from './jobDescriptionView';
@@ -10,13 +11,10 @@ import { AnalysisResultsView } from './AnalysisResultView';
 import { ResumePreview } from './ResumePreview';
 import { AgentModal } from './AgentModal';
 
-
-
-
 const ActionSidebar = ({ 
   job, initialMatchScore, tailorStep, tailorLoading, tailoredScore, scanProgress, scanText, 
   userFeedback, setUserFeedback, isDownloading, handleAnalyzeResume, handleOptimization, 
-  handleAcceptAndDownload, triggerAgentApply 
+  handleAcceptAndDownload, triggerAgentApply, hasSavedResume 
 }) => (
   <div className="flex flex-col gap-4 sticky top-24 animate-[fadeIn_0.5s_ease-out_0.4s_both]">
     {/* INITIAL MATCH SCORE INDICATOR */}
@@ -48,10 +46,22 @@ const ActionSidebar = ({
       {tailorStep === 'initial' && (
         <>
           <p className="text-xs text-slate-400 mb-5 leading-relaxed">Upload your resume to extract insights and generate a custom rewrite blueprint.</p>
+          
+          {/* Dynamic buttons for Saved Resume vs Upload */}
+          {hasSavedResume && (
+            <button 
+              onClick={() => handleAnalyzeResume(null, true)}
+              className="w-full py-3 mb-3 bg-[#161E31] hover:bg-[#1E293B] border border-indigo-500/30 text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.1)] flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+              Use Saved Resume
+            </button>
+          )}
+
           <label className="w-full py-3 bg-[#161E31] hover:bg-[#1E293B] border border-white/10 text-white rounded-xl font-bold text-sm transition-all cursor-pointer flex items-center justify-center gap-2">
             <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-            Upload Base Resume
-            <input type="file" className="hidden" accept=".pdf" onChange={handleAnalyzeResume} />
+            {hasSavedResume ? "Upload New File" : "Upload Base Resume"}
+            <input type="file" className="hidden" accept=".pdf" onChange={(e) => handleAnalyzeResume(e, false)} />
           </label>
         </>
       )}
@@ -136,21 +146,20 @@ const ActionSidebar = ({
 );
 
 
-
-
-
 export default function DetailedJob() {
   const { id } = useParams(); 
   const navigate = useNavigate();
   const location = useLocation();
+  const { getToken, isSignedIn } = useAuth(); 
   
   const initialMatchScore = location.state?.matchScore || null;
   
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [hasSavedResume, setHasSavedResume] = useState(false);
 
-  // --- RESUME TAILORING STATE ---
+
   const [tailorStep, setTailorStep] = useState('initial'); 
   const [file, setFile] = useState(null);
   const [tailorLoading, setTailorLoading] = useState(false);
@@ -163,17 +172,20 @@ export default function DetailedJob() {
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // --- AGENT EMAIL STATE ---
+  
   const [agentStep, setAgentStep] = useState(null); 
   const [agentProgress, setAgentProgress] = useState(0);
   const [emailDraft, setEmailDraft] = useState('');
 
-  // Fetch Data
+
   useEffect(() => {
     async function fetchJob() {
       try {
         setLoading(true);
-        const response = await axios.get(`http://localhost:3000/api/jobs/${id}`);
+   
+        const headers = isSignedIn ? { Authorization: `Bearer ${await getToken()}` } : {};
+        const response = await axios.get(`http://localhost:3000/api/jobs/${id}`, { headers });
+        
         if (response.data && response.data.job) setJob(response.data.job);
         else if (response.data) setJob(response.data); 
       } catch (err) {
@@ -183,26 +195,58 @@ export default function DetailedJob() {
       }
     }
     if (id) fetchJob();
-  }, [id]);
+  }, [id, isSignedIn, getToken]);
 
-  // Action: Analyze
-  const handleAnalyzeResume = async (e) => {
-    const uploadedFile = e.target.files[0];
-    if (!uploadedFile) return;
+
+  useEffect(() => {
+    async function checkSavedResume() {
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          const res = await axios.get('http://localhost:3000/api/users/profile', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data?.success && res.data.user?.resumeUrl) {
+            setHasSavedResume(true);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile", error);
+        }
+      }
+    }
+    checkSavedResume();
+  }, [isSignedIn, getToken]);
+
+
+  const handleAnalyzeResume = async (e, useSaved = false) => {
+    let uploadedFile = null;
+
+    if (!useSaved) {
+      uploadedFile = e?.target?.files[0];
+      if (!uploadedFile) return;
+      if (e.target) e.target.value = null;
+    }
     
-    setFile(uploadedFile);
+    setFile(uploadedFile || { name: 'Saved Profile Resume' });
     setTailorStep('analyzing');
     setTailorLoading(true);
     setScanProgress(0);
 
     try {
+      const token = await getToken(); 
       const formData = new FormData();
-      formData.append('resume', uploadedFile); 
+      
+      if (uploadedFile) {
+        formData.append('resume', uploadedFile); 
+      }
       formData.append('jd_content', `${job.title}\n\n${job.description}`);
 
       setScanText('Transmitting payload to backend...');
       const response = await axios.post('http://localhost:3000/api/jd-matcher/analyze', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
       });
 
       const payload = response.data;
@@ -218,7 +262,7 @@ export default function DetailedJob() {
     }
   };
 
-  // Action: Auto-Fix / Refix
+
   const handleOptimization = async (actionType) => {
     if (actionType === 'rewrite' && !userFeedback.trim()) return;
     
@@ -228,9 +272,12 @@ export default function DetailedJob() {
     setScanProgress(0);
 
     try {
+      const token = await getToken();
       const response = await axios.post('http://localhost:3000/api/jd-matcher/tailor', {
         action: actionType,
         feedback: actionType === 'rewrite' ? userFeedback : null
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       const payload = response.data;
@@ -248,11 +295,14 @@ export default function DetailedJob() {
     }
   };
 
-  // Action: Download
+ 
   const handleAcceptAndDownload = async () => {
     setIsDownloading(true);
     try {
-      await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }).catch(e => console.warn(e));
+      const token = await getToken();
+      await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(e => console.warn(e));
       
       const resumePreview = document.getElementById('resume-preview');
       const originalStyle = { height: resumePreview.style.height, maxHeight: resumePreview.style.maxHeight, overflow: resumePreview.style.overflow };
@@ -290,7 +340,7 @@ export default function DetailedJob() {
     }
   };
 
-  // Action: Agent Apply Logic
+
   const triggerAgentApply = () => {
     setAgentStep('tailoring');
     setAgentProgress(0);
@@ -311,7 +361,7 @@ export default function DetailedJob() {
   };
   const handleSendEmail = () => { setAgentStep('sent'); setTimeout(() => { setAgentStep(null); }, 3000); };
 
-  // Progress Bar Effect
+
   useEffect(() => {
     if (tailorStep === 'analyzing' || tailorStep === 'processing') {
       const interval = setInterval(() => {
@@ -344,12 +394,12 @@ export default function DetailedJob() {
     }
   }, [tailorStep, tailorLoading, isAutoFixing]);
 
-  // Loading/Error States
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#020617]"><div className="w-16 h-16 relative"><div className="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div><div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></div></div></div>;
   if (error || !job) return <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617] text-white"><h2 className="text-3xl font-black mb-4">Job Not Found</h2><p className="text-slate-400 mb-8">{error}</p><button onClick={() => navigate('/jobs-agent')} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Back to Job Board</button></div>;
 
 
-  // --- MAIN RENDER ---
+
   return (
     <div className="relative w-full min-h-screen pt-24 pb-20 bg-[#020617] text-slate-200 overflow-x-hidden font-sans">
       <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-30 pointer-events-none"></div>
@@ -445,11 +495,12 @@ export default function DetailedJob() {
               handleOptimization={handleOptimization}
               handleAcceptAndDownload={handleAcceptAndDownload}
               triggerAgentApply={triggerAgentApply}
+              hasSavedResume={hasSavedResume}
             />
           </div>
         </div>
 
-        {/* MODAL */}
+  
         {agentStep && (
           <AgentModal 
             job={job} agentStep={agentStep} agentProgress={agentProgress} 

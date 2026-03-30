@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
-import { Show, SignUpButton } from '@clerk/react';
+import { Show, SignUpButton, useAuth } from '@clerk/react';
 import { ResumeDocument } from './ResumeDocument';
 import { CollapsibleSection } from './CollapsiableSection';
 
-
-
-
 export default function AtsChecker() {
+
+  const { getToken, isSignedIn } = useAuth();
+
   const [file, setFile] = useState(null);
   const [scanState, setScanState] = useState('idle');
   const [scanProgress, setScanProgress] = useState(0);
@@ -21,6 +21,10 @@ export default function AtsChecker() {
   const [isTailoring, setIsTailoring] = useState(false);
   const [tailoredResume, setTailoredResume] = useState(null);
   const [newScore, setNewScore] = useState(0);
+  
+ 
+  const [hasSavedResume, setHasSavedResume] = useState(false);
+
 
   useEffect(() => {
     const savedData = localStorage.getItem('atsScanHistory');
@@ -41,11 +45,30 @@ export default function AtsChecker() {
     }
   }, []);
 
-  const handleUpload = async (e) => {
-    const uploadedFile = e.target.files[0] || e.dataTransfer?.files[0];
-    if (!uploadedFile) return;
 
-    setFile(uploadedFile);
+  useEffect(() => {
+    async function checkSavedResume() {
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          const res = await axios.get('http://localhost:3000/api/users/profile', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data?.success && res.data.user?.resumeUrl) {
+            setHasSavedResume(true);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile", error);
+        }
+      }
+    }
+    checkSavedResume();
+  }, [isSignedIn, getToken]);
+
+ 
+  const executeScan = async (uploadedFile = null) => {
+   
+    setFile(uploadedFile || { name: 'Saved Profile Resume' }); 
     setScanState('scanning');
     setScanProgress(0);
     setTerminalLogs(['[SYSTEM] Initializing secure environment...']);
@@ -54,12 +77,19 @@ export default function AtsChecker() {
     setTailoredResume(null);
 
     try {
+      const token = await getToken();
       setTerminalLogs(prev => [...prev, '[NETWORK] Transmitting encrypted payload to server...'].slice(-5));
+      
       const formData = new FormData();
-      formData.append('resume', uploadedFile);
+      if (uploadedFile) {
+        formData.append('resume', uploadedFile);
+      }
 
       const response = await axios.post('http://localhost:3000/api/ats/analyze-resume', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
       });
 
       const results = response.data?.ats_data?.response || response.data;
@@ -68,7 +98,7 @@ export default function AtsChecker() {
       setAtsResults(results);
 
       localStorage.setItem('atsScanHistory', JSON.stringify({
-        fileName: uploadedFile.name,
+        fileName: uploadedFile?.name || 'Saved Profile Resume',
         results: results
       }));
 
@@ -78,10 +108,22 @@ export default function AtsChecker() {
     }
   };
 
+  const handleUpload = (e) => {
+    const uploadedFile = e.target.files[0] || e.dataTransfer?.files[0];
+    if (uploadedFile) {
+      executeScan(uploadedFile);
+    }
+    if (e.target) e.target.value = null; 
+  };
+
   const handleTailorAction = async (choice) => {
     setIsTailoring(true);
     try {
-      const response = await axios.post('http://localhost:3000/api/ats/tailor-resume', { user_choice: choice });
+      const token = await getToken(); 
+      
+      const response = await axios.post('http://localhost:3000/api/ats/tailor-resume', 
+        { user_choice: choice },
+      );
       
       if (!choice) {
         setTailorState('declined');
@@ -89,7 +131,6 @@ export default function AtsChecker() {
         return;
       }
 
-      // ROBUST EXTRACTION: Handle double "data" wrappers and safely find the target
       const serverPayload = response.data?.data || response.data; 
       const atsResponse = serverPayload?.tailored_resume?.response || serverPayload?.response || serverPayload;
       
@@ -101,7 +142,6 @@ export default function AtsChecker() {
         setNewScore(finalScoreData);
         setTailorState('tailored');
         
-        // Save Everything to localstorage
         localStorage.setItem('atsScanHistory', JSON.stringify({
           fileName: file?.name || 'Resume.pdf',
           results: atsResults,
@@ -305,12 +345,25 @@ export default function AtsChecker() {
                 </div>
                 <h3 className="text-xl font-black mb-2">Upload Resume</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8">PDF or DOCX up to 2MB</p>
+                
                 <Show when={'signed-in'}>
-                  <label className="w-full py-3.5 px-6 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                    Browse Files
-                    <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
-                  </label>
+                  {/* 5. Dynamically show 'Use Saved' button if they have one */}
+                  <div className="flex flex-col sm:flex-row gap-3 w-full justify-center items-center">
+                    {hasSavedResume && (
+                      <button 
+                        onClick={() => executeScan(null)}
+                        className="w-full py-3.5 px-4 bg-slate-800 hover:bg-slate-700 border border-indigo-500/30 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex justify-center items-center gap-2 whitespace-nowrap"
+                      >
+                        <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Use Saved Resume
+                      </button>
+                    )}
+                    <label className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl font-bold text-sm cursor-pointer transition-colors shadow-lg flex justify-center items-center gap-2 whitespace-nowrap">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                      {hasSavedResume ? "Upload New" : "Browse Files"}
+                      <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
+                    </label>
+                  </div>
                 </Show>
 
                 <Show when={'signed-out'}>

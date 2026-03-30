@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import cloudinary from '../config/cloudinary.js';
 import axios from 'axios'
 
+
 export const getAllJobs = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -29,7 +30,7 @@ export const getAllJobs = async (req, res) => {
         });
 
     } catch (error) {
-        console.error(" Error fetching jobs:", error);
+        console.error("Error fetching jobs:", error);
         return res.status(500).json({
             success: false,
             message: "Failed to fetch jobs from the database.",
@@ -41,8 +42,7 @@ export const getAllJobs = async (req, res) => {
 export const getJobById = async (req, res) => {
     try {
         const { id } = req.params;
-        console.log(id);
-
+        console.log(`Fetching details for Job ID: ${id}`);
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -50,8 +50,6 @@ export const getJobById = async (req, res) => {
                 message: "Invalid Job ID format."
             });
         }
-
-        console.log(`Fetching details for Job ID: ${id}`);
 
         const job = await Job.findById(id).select("-embeddings");
 
@@ -68,7 +66,7 @@ export const getJobById = async (req, res) => {
         });
 
     } catch (error) {
-        console.error(" Error fetching job by ID:", error);
+        console.error("Error fetching job by ID:", error);
         return res.status(500).json({
             success: false,
             message: "Server error while fetching the job details.",
@@ -79,28 +77,45 @@ export const getJobById = async (req, res) => {
 
 export const getMatchedJobs = async (req, res) => {
     try {
+        
+        const currentUser = req.user; 
+        let securePdfUrl = null;
 
-        if (!req.file) {
-            return res.status(400).json({ success: false, message: "No resume file provided" });
+        
+        if (req.file) {
+            console.log("New file uploaded. Processing to Cloudinary...");
+            const b64 = Buffer.from(req.file.buffer).toString('base64');
+            const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+
+            const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
+                resource_type: "auto",
+                folder: "resumes"
+            });
+            securePdfUrl = cloudinaryResponse.secure_url;
+        } 
+       
+        else if (currentUser && currentUser.resumeUrl) {
+            console.log("No file uploaded. Using saved Base Resume from profile...");
+            securePdfUrl = currentUser.resumeUrl;
+        } 
+        
+        else {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Please upload a resume or save a Base Resume in your Secrets profile." 
+            });
         }
 
-        const b64 = Buffer.from(req.file.buffer).toString('base64');
-        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+        console.log(`Executing match against: ${securePdfUrl}`);
 
+       
+        const pythonPayload = {
+            resume_url: securePdfUrl,
+            api_key: currentUser?.API_key_Gemini || null
+        };
 
-        const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
-            resource_type: "auto",
-            folder: "resumes"
-        });
-        const securePdfUrl = cloudinaryResponse.secure_url;
-
-        console.log(securePdfUrl);
-
-        const pythonResponse = await axios.post('http://127.0.0.1:8000/api/matched-jobs', {
-            resume_url: securePdfUrl
-        });
-        console.log(pythonResponse);
-
+        const pythonResponse = await axios.post('http://127.0.0.1:8000/api/matched-jobs', pythonPayload);
+        
         const matched_jobs = pythonResponse.data;
 
         return res.status(200).json({
@@ -116,4 +131,4 @@ export const getMatchedJobs = async (req, res) => {
             error: err.message
         });
     }
-}
+};

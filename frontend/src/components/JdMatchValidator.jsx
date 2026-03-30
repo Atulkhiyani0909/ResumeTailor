@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
-import { Show, SignIn, SignUp, SignUpButton } from '@clerk/react';
+import { Show, SignInButton, SignUpButton, useAuth } from '@clerk/react'; 
 
 export default function JdMatchValidator() {
+
+  const { getToken, isSignedIn } = useAuth();
+
   const [step, setStep] = useState('input');
   const [file, setFile] = useState(null);
   const [jdText, setJdText] = useState('');
@@ -17,8 +20,11 @@ export default function JdMatchValidator() {
   const [fixedResume, setFixedResume] = useState(null);
   const [isAILoading, setIsAILoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  
 
-  // 1. LOAD FROM LOCAL STORAGE ON MOUNT
+  const [hasSavedResume, setHasSavedResume] = useState(false);
+
+
   useEffect(() => {
     const savedData = localStorage.getItem('jdMatchHistory');
     if (savedData) {
@@ -27,7 +33,7 @@ export default function JdMatchValidator() {
         setAnalysisResults(parsed.analysisResults);
         setMatchScore(parsed.matchScore);
         setJdText(parsed.jdText);
-        setFile({ name: parsed.fileName }); // Mock file object just for UI display
+        setFile({ name: parsed.fileName }); 
         
         if (parsed.fixedResume) {
           setFixedResume(parsed.fixedResume);
@@ -41,7 +47,27 @@ export default function JdMatchValidator() {
     }
   }, []);
 
-  // 2. CLEAR LOCAL STORAGE ON RESET
+
+  useEffect(() => {
+    async function checkSavedResume() {
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          const res = await axios.get('http://localhost:3000/api/users/profile', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data?.success && res.data.user?.resumeUrl) {
+            setHasSavedResume(true);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile", error);
+        }
+      }
+    }
+    checkSavedResume();
+  }, [isSignedIn, getToken]);
+
+
   const resetScanner = () => {
     localStorage.removeItem('jdMatchHistory');
     setFile(null);
@@ -55,20 +81,30 @@ export default function JdMatchValidator() {
   };
 
   const handleStartAnalysis = async () => {
-    if (!file || !jdText.trim()) return alert("Please upload a resume and paste a JD.");
+  
+    if (!file && !hasSavedResume) return alert("Please upload a resume or select your saved resume, and paste a JD.");
+    if (!jdText.trim()) return alert("Please paste the Target Job Description.");
 
     setStep('analyzing');
     setIsAILoading(true);
     setScanProgress(0);
 
     try {
+      const token = await getToken();  
       const formData = new FormData();
-      formData.append('resume', file);
+      
+     
+      if (file && file instanceof File) {
+        formData.append('resume', file);
+      }
       formData.append('jd_content', jdText);
 
       setScanText('Transmitting payload to backend...');
       const response = await axios.post('http://localhost:3000/api/jd-matcher/analyze', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
       });
 
       const payload = response.data;
@@ -77,9 +113,9 @@ export default function JdMatchValidator() {
       setAnalysisResults(fullState);
       setMatchScore(fullState.match_score || 0);
 
-      // 3. SAVE INITIAL ANALYSIS TO LOCAL STORAGE
+      
       localStorage.setItem('jdMatchHistory', JSON.stringify({
-        fileName: file.name,
+        fileName: file?.name || 'Saved Profile Resume',
         jdText: jdText,
         analysisResults: fullState,
         matchScore: fullState.match_score || 0
@@ -103,9 +139,12 @@ export default function JdMatchValidator() {
     setScanProgress(0);
 
     try {
+      const token = await getToken();
       const response = await axios.post('http://localhost:3000/api/jd-matcher/tailor', {
         action: actionType,
         feedback: actionType === 'rewrite' ? userFeedback : null
+      }, {
+        headers: { Authorization: `Bearer ${token}` }  
       });
 
       const payload = response.data;
@@ -119,9 +158,9 @@ export default function JdMatchValidator() {
         setUserFeedback('');
       }
 
-      // 4. SAVE TAILORED RESUME TO LOCAL STORAGE
+
       localStorage.setItem('jdMatchHistory', JSON.stringify({
-        fileName: file?.name || 'Resume.pdf',
+        fileName: file?.name || 'Saved Profile Resume',
         jdText: jdText,
         analysisResults: analysisResults, 
         matchScore: newScore,
@@ -140,8 +179,10 @@ export default function JdMatchValidator() {
   const handleAcceptAndDownload = async () => {
     setIsDownloading(true);
     try {
-      // Safely tell backend we accepted, but don't block download if it fails
-      await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }).catch(e => console.warn('Backend logging skipped', e));
+      const token = await getToken();
+      await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }, {
+        headers: { Authorization: `Bearer ${token}` } 
+      }).catch(e => console.warn('Backend logging skipped', e));
 
       const resumePreview = document.getElementById('resume-preview');
       await new Promise((resolve) => setTimeout(resolve, 300));
@@ -241,15 +282,39 @@ export default function JdMatchValidator() {
                       Upload Base Resume
                     </label>
                     <Show when={'signed-in'}>
-                      <label className="flex flex-col items-center justify-center w-full h-full min-h-[200px] border-2 border-dashed border-indigo-500/30 rounded-2xl bg-indigo-500/5 hover:bg-indigo-500/10 transition-all cursor-pointer group">
-                        <div className="flex flex-col items-center justify-center text-center p-6">
-                          <div className="w-16 h-16 bg-[#161E31] rounded-2xl border border-white/5 flex items-center justify-center mb-4 group-hover:-translate-y-1 transition-transform">
-                            <svg className="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                          </div>
-                          <p className="text-sm font-bold text-slate-300">{file ? file.name : "Drag & Drop your PDF here"}</p>
+                      {/* 6. Dynamic split UI if user has saved resume */}
+                      {hasSavedResume ? (
+                        <div className="flex flex-col sm:flex-row gap-4 w-full h-full min-h-[200px]">
+                          <button
+                            onClick={() => setFile({ name: 'Saved Profile Resume' })}
+                            className={`flex-1 flex flex-col items-center justify-center border-2 ${file?.name === 'Saved Profile Resume' ? 'border-indigo-500 bg-indigo-500/20' : 'border-indigo-500/30 border-dashed bg-indigo-500/5 hover:bg-indigo-500/10'} rounded-2xl transition-all cursor-pointer group p-4`}
+                          >
+                            <div className="w-12 h-12 bg-[#161E31] rounded-xl border border-white/5 flex items-center justify-center mb-3 group-hover:-translate-y-1 transition-transform">
+                              <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            </div>
+                            <p className="text-sm font-bold text-slate-300 text-center">Use Saved Resume</p>
+                            {file?.name === 'Saved Profile Resume' && <span className="mt-2 px-2 py-0.5 bg-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase rounded">Selected</span>}
+                          </button>
+
+                          <label className={`flex-1 flex flex-col items-center justify-center border-2 border-dashed ${file && file.name !== 'Saved Profile Resume' ? 'border-indigo-500 bg-indigo-500/20' : 'border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10'} rounded-2xl transition-all cursor-pointer group p-4`}>
+                            <div className="w-12 h-12 bg-[#161E31] rounded-xl border border-white/5 flex items-center justify-center mb-3 group-hover:-translate-y-1 transition-transform">
+                              <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            </div>
+                            <p className="text-sm font-bold text-slate-300 text-center truncate w-full px-2">{file && file.name !== 'Saved Profile Resume' ? file.name : "Upload New File"}</p>
+                            <input type="file" className="hidden" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files[0])} />
+                          </label>
                         </div>
-                        <input type="file" className="hidden" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files[0])} />
-                      </label>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center w-full h-full min-h-[200px] border-2 border-dashed border-indigo-500/30 rounded-2xl bg-indigo-500/5 hover:bg-indigo-500/10 transition-all cursor-pointer group">
+                          <div className="flex flex-col items-center justify-center text-center p-6">
+                            <div className="w-16 h-16 bg-[#161E31] rounded-2xl border border-white/5 flex items-center justify-center mb-4 group-hover:-translate-y-1 transition-transform">
+                              <svg className="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            </div>
+                            <p className="text-sm font-bold text-slate-300">{file ? file.name : "Drag & Drop your PDF here"}</p>
+                          </div>
+                          <input type="file" className="hidden" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files[0])} />
+                        </label>
+                      )}
                     </Show>
                     <Show when={'signed-out'}>
                       <label className="flex flex-col items-center justify-center w-full h-full min-h-[200px] border-2 border-dashed border-indigo-500/30 rounded-2xl bg-indigo-500/5 hover:bg-indigo-500/10 transition-all cursor-pointer group">

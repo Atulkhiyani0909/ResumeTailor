@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Show, SignIn, SignInButton, SignUpButton } from '@clerk/react';
+import { Show, SignInButton, SignUpButton, useAuth } from '@clerk/react';
 
 export default function JobsAgent() {
   const navigate = useNavigate();
+
+  const { getToken, isSignedIn } = useAuth();
+  
   const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
 
@@ -16,10 +19,13 @@ export default function JobsAgent() {
   const [isMatched, setIsMatched] = useState(false);
   const [matchLoading, setMatchLoading] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  
+
+  const [hasSavedResume, setHasSavedResume] = useState(false);
+
 
   useEffect(() => {
     async function get_jobs() {
-      // 1. Check Memory First
       const cachedJobs = sessionStorage.getItem('aiMatchedJobs');
 
       if (cachedJobs) {
@@ -30,9 +36,15 @@ export default function JobsAgent() {
         return;
       }
 
-      // 2. If no memory, fetch from DB
       try {
-        const result = await axios.get('http://localhost:3000/api/jobs');
+       
+        let headers = {};
+        if (isSignedIn) {
+          const token = await getToken();
+          headers = { Authorization: `Bearer ${token}` };
+        }
+
+        const result = await axios.get('http://localhost:3000/api/jobs', { headers });
         if (result.data && result.data.success) {
           const dbJobs = result.data.jobs.map(job => ({ ...job, matchScore: 0 }));
           setJobs(dbJobs);
@@ -45,15 +57,34 @@ export default function JobsAgent() {
     }
 
     get_jobs();
-  }, []);
+  }, [isSignedIn, getToken]);
+
+ 
+  useEffect(() => {
+    async function checkSavedResume() {
+      if (isSignedIn) {
+        try {
+          const token = await getToken();
+          const res = await axios.get('http://localhost:3000/api/users/profile', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          if (res.data?.success && res.data.user?.resumeUrl) {
+            setHasSavedResume(true);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user profile", error);
+        }
+      }
+    }
+    checkSavedResume();
+  }, [isSignedIn, getToken]);
 
   const uniqueLocations = ['All', ...new Set(jobs.map(job => job.location).filter(Boolean))];
   const uniqueSources = ['All', ...new Set(jobs.map(job => job.source_from).filter(Boolean))];
 
-  const handleSmartMatch = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+ 
+  const executeSmartMatch = async (file = null) => {
     setMatchLoading(true);
     setScanProgress(0);
 
@@ -65,11 +96,19 @@ export default function JobsAgent() {
     }, 200);
 
     try {
+      const token = await getToken();
       const formData = new FormData();
-      formData.append('resume', file);
+      
+   
+      if (file) {
+        formData.append('resume', file);
+      }
 
       const result = await axios.post('http://localhost:3000/api/jobs/matched-jobs', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`
+        }
       });
 
       if (result.data && result.data.success) {
@@ -78,7 +117,6 @@ export default function JobsAgent() {
 
         setTimeout(() => {
           setMatchLoading(false);
-
           const incomingJobs = result.data.matched_jobs?.response;
 
           if (!incomingJobs || !Array.isArray(incomingJobs) || incomingJobs.length === 0) {
@@ -90,7 +128,7 @@ export default function JobsAgent() {
           setIsMatched(true);
           setSortBy('match');
 
-          const scoredJobs = incomingJobs.map((job, index) => ({
+          const scoredJobs = incomingJobs.map((job) => ({
             ...job,
             _id: job._id,
             matchScore: job.score ? Math.round(job.score * 100) : 0,
@@ -100,8 +138,6 @@ export default function JobsAgent() {
           }));
 
           setJobs(scoredJobs);
-
-          // 🔥 CRITICAL FIX: Save to Memory! 
           sessionStorage.setItem('aiMatchedJobs', JSON.stringify(scoredJobs));
 
         }, 500);
@@ -113,9 +149,15 @@ export default function JobsAgent() {
       clearInterval(interval);
       setMatchLoading(false);
       alert("Failed to analyze resume and match jobs. Check console for details.");
-    } finally {
-      e.target.value = null;
     }
+  };
+
+  const handleSmartMatchUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      executeSmartMatch(file);
+    }
+    e.target.value = null; 
   };
 
   const handleViewDetails = (jobId, score) => {
@@ -152,21 +194,34 @@ export default function JobsAgent() {
               <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Autonomous Sourcing</span>
             </div>
-            {/* Reduced Title Size Here */}
             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-2">Job Discovery Board</h1>
             <p className="text-slate-400 text-lg">Find your next role. Click any job to view details and launch the Auto Apply Agent.</p>
           </div>
 
           <Show when={'signed-in'}>
             {!isMatched && !matchLoading && !loadingJobs && (
-              <div className="flex flex-col items-center md:items-end">
-                <label className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl font-black transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 cursor-pointer flex items-center justify-center gap-2 group whitespace-nowrap">
-                  <svg className="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                  Smart Match Resume
-                  <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleSmartMatch} />
-                </label>
-                {/* Added Explanatory Note Here */}
-                <p className="text-[11px] text-slate-500 font-medium mt-3 max-w-[250px] text-center md:text-right leading-relaxed">
+              <div className="flex flex-col items-center md:items-end gap-3">
+                <div className="flex flex-wrap items-center justify-center md:justify-end gap-3">
+                  
+                  {/* 5. Dynamically show 'Use Saved' button if they have one */}
+                  {hasSavedResume && (
+                    <button
+                      onClick={() => executeSmartMatch(null)}
+                      className="px-6 py-4 bg-[#161E31] hover:bg-[#1E293B] border border-indigo-500/30 text-white rounded-xl font-black transition-all shadow-[0_0_20px_rgba(99,102,241,0.1)] hover:shadow-[0_0_30px_rgba(99,102,241,0.3)] hover:-translate-y-1 flex items-center justify-center gap-2 group whitespace-nowrap"
+                    >
+                      <svg className="w-5 h-5 text-indigo-400 group-hover:animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                      Use Saved Resume
+                    </button>
+                  )}
+
+                  <label className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl font-black transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:-translate-y-1 cursor-pointer flex items-center justify-center gap-2 group whitespace-nowrap">
+                    <svg className="w-5 h-5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    {hasSavedResume ? "Upload New" : "Smart Match Resume"}
+                    <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleSmartMatchUpload} />
+                  </label>
+                </div>
+                
+                <p className="text-[11px] text-slate-500 font-medium mt-1 max-w-[300px] text-center md:text-right leading-relaxed">
                   <strong className="text-cyan-400">What is this?</strong> Upload your resume and our AI will vectorize it to instantly surface and rank the jobs that best match your experience.
                 </p>
               </div>
@@ -318,19 +373,16 @@ export default function JobsAgent() {
         <Show when={'signed-out'}>
           <div className="relative w-full max-w-md mx-auto p-8 md:p-10 rounded-[2.5rem] bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 shadow-2xl overflow-hidden group hover:border-white/10 transition-all duration-500 animate-[fadeIn_0.5s_ease-out]">
 
-
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-[50px] transition-transform duration-700 group-hover:scale-125 pointer-events-none"></div>
             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-[50px] pointer-events-none"></div>
 
             <div className="relative z-10 flex flex-col items-center text-center">
-
 
               <div className="w-16 h-16 rounded-2xl bg-[#161E31] border border-white/5 flex items-center justify-center text-indigo-400 mb-6 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:shadow-[0_0_25px_rgba(99,102,241,0.4)] group-hover:-translate-y-1 transition-all duration-300">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                 </svg>
               </div>
-
 
               <div className="inline-flex items-center space-x-2 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-full mb-4">
                 <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
@@ -345,9 +397,7 @@ export default function JobsAgent() {
                 Create an account to save your tailored resumes, launch autonomous apply agents, and track your match scores.
               </p>
 
-
               <div className="w-full">
-
                 <SignUpButton
                   mode="modal"
                   forceRedirectUrl="/jobs-apply"

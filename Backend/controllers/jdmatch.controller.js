@@ -3,43 +3,56 @@ import cloudinary from '../config/cloudinary.js';
 
 const PYTHON_AI_SERVICE_URL = 'http://127.0.0.1:8000';
 
-
 export const analyzeGaps = async (req, res) => {
   try {
-    const {  jd_content } = req.body;
-
-      if (!req.file) {
-      return res.status(400).json({ success: false, message: "No resume file provided" });
-    }
+    const { jd_content } = req.body;
+   
+    const currentUser = req.user; 
+    let securePdfUrl = null;
 
     if (!jd_content) {
       return res.status(400).json({ 
         success: false, 
-        message: "Missing required fields: resume_url and jd_content are required." 
+        message: "Missing required field: jd_content is required." 
       });
     }
-    
-     const b64 = Buffer.from(req.file.buffer).toString('base64');
-        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    
-        
-        const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
-          resource_type: "auto",
-          folder: "resumes" 
-        });
-        const securePdfUrl = cloudinaryResponse.secure_url;
-    
-        console.log(securePdfUrl);
 
-    console.log(`[NODE] Forwarding Analysis Request to Python AI...`);
+    
+    if (req.file) {
+      console.log("[NODE] New file uploaded. Processing to Cloudinary...");
+      const b64 = Buffer.from(req.file.buffer).toString('base64');
+      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+      
+      const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
+        resource_type: "auto",
+        folder: "resumes" 
+      });
+      securePdfUrl = cloudinaryResponse.secure_url;
+    } 
+    
+    else if (currentUser && currentUser.resumeUrl) {
+      console.log("[NODE] No file uploaded. Using saved Base Resume from profile...");
+      securePdfUrl = currentUser.resumeUrl;
+    } 
+    
+    else {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Please upload a resume or save a Base Resume in your Secrets profile." 
+      });
+    }
 
-
-    const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/analyze`, {
-      resume_url:securePdfUrl,
-      jd_content
-    });
+    console.log(`[NODE] Forwarding Analysis Request to Python AI for: ${securePdfUrl}`);
 
    
+    const pythonPayload = {
+      resume_url: securePdfUrl,
+      jd_content: jd_content,
+      api_key: currentUser?.API_key_Gemini || null 
+    };
+
+    const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/analyze`, pythonPayload);
+
     return res.status(200).json(pythonResponse.data);
 
   } catch (error) {
@@ -55,6 +68,7 @@ export const analyzeGaps = async (req, res) => {
 
 export const tailorResume = async (req, res) => {
   try {
+    const currentUser = req.user;
     const { action, feedback } = req.body;
 
     if (!action) {
@@ -67,12 +81,14 @@ export const tailorResume = async (req, res) => {
     console.log(`[NODE] Forwarding Tailor Request (${action}) to Python AI...`);
 
     
-    const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/tailor`, {
-      action,
-      feedback: feedback || null
-    });
+    const pythonPayload = {
+      action: action,
+      feedback: feedback || null,
+      api_key: currentUser?.API_key_Gemini || null
+    };
 
-    
+    const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/tailor`, pythonPayload);
+
     return res.status(200).json(pythonResponse.data);
 
   } catch (error) {

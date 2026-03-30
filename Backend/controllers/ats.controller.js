@@ -1,31 +1,47 @@
 import axios from 'axios';
 import cloudinary from '../config/cloudinary.js';
 
-export  async function get_ats_score(req, res) {
-try {
+export async function get_ats_score(req, res) {
+  try {
    
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No resume file provided" });
+    const currentUser = req.user; 
+    let securePdfUrl = null;
+
+   
+    if (req.file) {
+      console.log("New file uploaded. Processing to Cloudinary...");
+      const b64 = Buffer.from(req.file.buffer).toString('base64');
+      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+      
+      const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
+        resource_type: "auto",
+        folder: "resumes" 
+      });
+      securePdfUrl = cloudinaryResponse.secure_url;
+    } 
+  
+    else if (currentUser && currentUser.resumeUrl) {
+      console.log("No file uploaded. Using saved Base Resume from profile...");
+      securePdfUrl = currentUser.resumeUrl;
+    } 
+    
+    else {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Please upload a resume or save a Base Resume in your Secrets profile." 
+      });
     }
 
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-
+    console.log(`Executing ATS check against: ${securePdfUrl}`);
     
-    const cloudinaryResponse = await cloudinary.uploader.upload(dataURI, {
-      resource_type: "auto",
-      folder: "resumes" 
-    });
-    const securePdfUrl = cloudinaryResponse.secure_url;
+   
+    const pythonPayload = {
+      resume_url: securePdfUrl,
+      api_key: currentUser?.API_key_Gemini || null 
+    };
 
-    console.log(securePdfUrl);
-    
-    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/calculate-score', {
-      resume_url: securePdfUrl
-    });
+    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/calculate-score', pythonPayload);
 
-    console.log(pythonResponse);
-    
     const atsData = pythonResponse.data;
 
     return res.status(200).json({
@@ -44,32 +60,37 @@ try {
   }
 }
 
-export  async function tailor_resume(req,res){
- try {
-  const {user_choice} = req.body;
-  if(!user_choice){
-    return res.status(400).json({ success: false, message: "Need User Choice" });
-  }
+export async function tailor_resume(req, res) {
+  try {
+    const currentUser = req.user; 
+    const { user_choice } = req.body;
+    
+   
+    if (user_choice === undefined || user_choice === null) {
+      return res.status(400).json({ success: false, message: "Need User Choice" });
+    }
 
-   const pythonResponse = await axios.post('http://127.0.0.1:8000/api/tailor-resume', {
-      user_choice : user_choice
-    });
+    
+    const pythonPayload = {
+      user_choice: user_choice,
+      api_key: currentUser?.API_key_Gemini || null 
+    };
 
-    console.log(pythonResponse);
+    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/tailor-resume', pythonPayload);
     
     const tailored_resume = pythonResponse.data;
 
     return res.status(200).json({
       success: true,
-      tailored_resume : tailored_resume
+      tailored_resume: tailored_resume
     });
 
- } catch (error) {
-  console.error("Controller Error :", error);
+  } catch (error) {
+    console.error("Controller Error (tailor_resume):", error);
     return res.status(500).json({ 
       success: false, 
-      message: "Server error during Tailoring Resume ",
+      message: "Server error during Tailoring Resume",
       error: error.message
     });
- }
+  }
 }

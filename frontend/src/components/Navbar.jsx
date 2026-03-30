@@ -1,118 +1,300 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from "react-router-dom";
-import { Show, SignInButton, SignUpButton, UserButton, UserProfile } from '@clerk/react'
+import { Show, SignInButton, SignUpButton, UserButton ,useAuth } from '@clerk/react';
+import axios from 'axios';
 
-export default function Navbar() {
-  const navigate = useNavigate();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Helper to close menu when a link is clicked on mobile
-  const closeMenu = () => setIsMobileMenuOpen(false);
+
+const SecretsModal = ({ isOpen, onClose }) => {
+  const [resumeUrl, setResumeUrl] = useState(null);
+  const [geminiKey, setGeminiKey] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+const {getToken} = useAuth();
+
+useEffect(() => {
+    if (isOpen) {
+      const fetchProfile = async () => {
+        try {
+    
+          const token = await getToken(); 
+
+         
+          const res = await axios.get('http://localhost:3000/api/users/profile', {
+            headers: { Authorization: `Bearer ${token}` } 
+          });
+
+          if (res.data.success) {
+            setResumeUrl(res.data.user.resumeUrl);
+            setGeminiKey(res.data.user.API_key_Gemini);
+          }
+        } catch (err) {
+          console.error("Failed to fetch profile", err);
+        }
+      };
+      fetchProfile();
+    }
+  }, [isOpen, getToken]); 
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setMessage('');
+    
+    const formData = new FormData();
+    
+    if (geminiKey) {
+      formData.append('API_key_Gemini', geminiKey);
+    }
+    if (selectedFile) {
+      formData.append('resume', selectedFile);
+    }
+
+    try {
+      const token = await getToken();
+
+      const res = await axios.patch('http://localhost:3000/api/users/profile', formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
+      });
+      
+      if (res.data.success) {
+        setMessage('Secrets saved successfully!');
+        setResumeUrl(res.data.user.resumeUrl);
+        setSelectedFile(null);
+        setTimeout(() => {
+          setMessage('');
+          onClose(); 
+        }, 1500);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessage('Failed to save settings.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <nav className="fixed top-0 z-50 w-full border-b border-white/5 bg-[#020617]/80 backdrop-blur-xl transition-all duration-300">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
-
-        {/* LOGO */}
-        <div 
-          className="text-2xl font-black tracking-tighter cursor-pointer flex items-center z-50" 
-          onClick={() => {
-            navigate('/');
-            closeMenu();
-          }}
-        >
-          <span className="bg-gradient-to-r from-indigo-500 to-cyan-400 bg-clip-text text-transparent">Resume</span>
-          <span className="text-white">Tailor</span>
-          <span className="text-indigo-500 ml-0.5">.AI</span>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+      <div className="bg-[#0F1629] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md relative flex flex-col">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/5">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            Your Secrets
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
         </div>
 
-        {/* DESKTOP NAVIGATION LINKS */}
-        <div className="hidden md:flex items-center space-x-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-          <Link to="/ats-checker" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
-            ATS SCORE
-          </Link>
-          <Link to="/jd-match" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
-            JD MATCHER
-          </Link>
-          <Link to="/jobs-apply" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
-            SMART JOB AGENT
-          </Link>
-        </div>
-
-        {/* RIGHT SIDE: AUTH BUTTONS & MOBILE TOGGLE */}
-        <div className="flex items-center space-x-4 z-50">
-          
-          {/* Desktop Auth Buttons */}
-          <div className="hidden md:flex items-center space-x-4">
-            <Show when="signed-out">
-              <SignInButton mode="modal">
-                <button className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] hover:shadow-[0_0_25px_rgba(99,102,241,0.6)] hover:-translate-y-0.5">
-                  Log In
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] hover:shadow-[0_0_25px_rgba(99,102,241,0.6)] hover:-translate-y-0.5">
-                  Sign Up
-                </button>
-              </SignUpButton>
-            </Show>
+        {/* Body */}
+        <div className="p-6 flex flex-col gap-6">
+          {/* Resume Upload */}
+          <div>
+            <label className="block text-sm font-bold text-slate-300 mb-3">Base Resume</label>
+            {resumeUrl && !selectedFile && (
+              <div className="mb-3 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between">
+                <span className="text-xs text-indigo-300 font-medium truncate pr-4">Active Resume Linked</span>
+                <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 shrink-0">View PDF</a>
+              </div>
+            )}
+            
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/10 rounded-xl bg-[#161E31] hover:bg-[#1E293B] transition-all cursor-pointer group">
+              <div className="flex flex-col items-center justify-center text-center p-4">
+                <svg className="w-6 h-6 text-slate-400 mb-2 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                <p className="text-xs font-bold text-slate-300">{selectedFile ? selectedFile.name : "Upload New Resume PDF"}</p>
+              </div>
+              <input type="file" className="hidden" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files[0])} />
+            </label>
           </div>
 
-          {/* User Profile (Visible on both Mobile & Desktop) */}
-          <Show when="signed-in">
-            <UserButton afterSignOutUrl="/" />
-          </Show>
+          {/* API Key */}
+          <div>
+            <label className="block text-sm font-bold text-slate-300 mb-3">Gemini API Key</label>
+            <input 
+              type="text" 
+              value={geminiKey}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="AIzaSy..."
+              className="w-full p-4 rounded-xl bg-[#161E31] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm text-white font-mono"
+            />
+            <p className="text-[10px] text-slate-500 mt-2">Your key is stored securely. Used for local tailoring.</p>
+          </div>
+        </div>
 
-          {/* Mobile Hamburger Toggle */}
+        {/* Footer */}
+        <div className="p-6 border-t border-white/5 flex items-center justify-between bg-[#0A0F1D] rounded-b-2xl">
+          <span className={`text-xs font-bold ${message.includes('success') ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {message}
+          </span>
           <button 
-            className="md:hidden p-2 text-slate-300 hover:text-white focus:outline-none transition-colors"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)]"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {isMobileMenuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
 
       </div>
-
-      {/* MOBILE MENU DROPDOWN */}
-      <div className={`md:hidden transition-all duration-300 ease-in-out overflow-hidden bg-[#0F1629]/95 backdrop-blur-3xl border-b border-white/5 ${isMobileMenuOpen ? 'max-h-[500px] opacity-100 py-4' : 'max-h-0 opacity-0 py-0'}`}>
-        <div className="flex flex-col items-center space-y-2 px-6">
-          <Link to="/ats-checker" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
-            ATS SCORE
-          </Link>
-          <Link to="/jd-match" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
-            JD MATCHER
-          </Link>
-          <Link to="/jobs-apply" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
-            SMART JOB AGENT
-          </Link>
+    </div>
+  );
+};
 
 
-          
-          {/* Mobile Auth Buttons */}
-          <Show when="signed-out">
-            <div className="flex flex-col w-full gap-3 pt-4 mt-2 border-t border-white/10">
-              <SignInButton mode="modal">
-                <button onClick={closeMenu} className="w-full px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white border border-white/10 transition-all duration-200">
-                  Log In
-                </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button onClick={closeMenu} className="w-full px-6 py-3 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-xl shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-                  Sign Up
-                </button>
-              </SignUpButton>
+// --- MAIN NAVBAR COMPONENT ---
+export default function Navbar() {
+  const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSecretsModalOpen, setIsSecretsModalOpen] = useState(false);
+
+  const closeMenu = () => setIsMobileMenuOpen(false);
+
+  return (
+    <>
+      {/* Secrets Modal Overlay */}
+      <SecretsModal isOpen={isSecretsModalOpen} onClose={() => setIsSecretsModalOpen(false)} />
+
+      <nav className="fixed top-0 z-40 w-full border-b border-white/5 bg-[#020617]/80 backdrop-blur-xl transition-all duration-300">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
+
+          {/* LOGO */}
+          <div 
+            className="text-2xl font-black tracking-tighter cursor-pointer flex items-center" 
+            onClick={() => {
+              navigate('/');
+              closeMenu();
+            }}
+          >
+            <span className="bg-gradient-to-r from-indigo-500 to-cyan-400 bg-clip-text text-transparent">Resume</span>
+            <span className="text-white">Tailor</span>
+            <span className="text-indigo-500 ml-0.5">.AI</span>
+          </div>
+
+          {/* DESKTOP NAVIGATION LINKS */}
+          <div className="hidden md:flex items-center space-x-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+            <Link to="/ats-checker" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
+              ATS SCORE
+            </Link>
+            <Link to="/jd-match" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
+              JD MATCHER
+            </Link>
+            <Link to="/jobs-apply" className="px-4 py-2 rounded-full text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white hover:shadow-sm transition-all duration-200">
+              SMART JOB AGENT
+            </Link>
+          </div>
+
+          {/* RIGHT SIDE: AUTH BUTTONS & MOBILE TOGGLE */}
+          <div className="flex items-center space-x-4">
+            
+            {/* Desktop Auth Buttons */}
+            <div className="hidden md:flex items-center space-x-4">
+              <Show when="signed-out">
+                <SignInButton mode="modal">
+                  <button className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] hover:shadow-[0_0_25px_rgba(99,102,241,0.6)] hover:-translate-y-0.5">
+                    Log In
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] hover:shadow-[0_0_25px_rgba(99,102,241,0.6)] hover:-translate-y-0.5">
+                    Sign Up
+                  </button>
+                </SignUpButton>
+              </Show>
             </div>
-          </Show>
-          
+
+            {/* Authenticated User Controls */}
+            <Show when="signed-in">
+              {/* Custom Secrets Button */}
+              <button 
+                onClick={() => setIsSecretsModalOpen(true)}
+                className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm font-bold text-slate-300 hover:text-white transition-colors"
+              >
+                <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                Secrets
+              </button>
+
+              {/* Default Clerk User Button */}
+              <div className="pl-2 border-l border-white/10 hidden md:block">
+                <UserButton afterSignOutUrl="/" />
+              </div>
+            </Show>
+
+            {/* Mobile Hamburger Toggle */}
+            <div className="flex items-center gap-4 md:hidden">
+              <Show when="signed-in">
+                <UserButton afterSignOutUrl="/" />
+              </Show>
+              <button 
+                className="p-2 text-slate-300 hover:text-white focus:outline-none transition-colors"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {isMobileMenuOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </button>
+            </div>
+          </div>
+
         </div>
-      </div>
-    </nav>
+
+        {/* MOBILE MENU DROPDOWN */}
+        <div className={`md:hidden transition-all duration-300 ease-in-out overflow-hidden bg-[#0F1629]/95 backdrop-blur-3xl border-b border-white/5 ${isMobileMenuOpen ? 'max-h-[500px] opacity-100 py-4' : 'max-h-0 opacity-0 py-0'}`}>
+          <div className="flex flex-col items-center space-y-2 px-6">
+            <Link to="/ats-checker" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
+              ATS SCORE
+            </Link>
+            <Link to="/jd-match" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
+              JD MATCHER
+            </Link>
+            <Link to="/jobs-apply" onClick={closeMenu} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all duration-200">
+              SMART JOB AGENT
+            </Link>
+
+            <Show when="signed-in">
+              <button 
+                onClick={() => {
+                  closeMenu();
+                  setIsSecretsModalOpen(true);
+                }} 
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 mt-2 rounded-xl text-sm font-bold text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-all duration-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                Manage Secrets
+              </button>
+            </Show>
+
+            {/* Mobile Auth Buttons */}
+            <Show when="signed-out">
+              <div className="flex flex-col w-full gap-3 pt-4 mt-2 border-t border-white/10">
+                <SignInButton mode="modal">
+                  <button onClick={closeMenu} className="w-full px-4 py-3 rounded-xl text-sm font-bold text-slate-300 hover:bg-white/5 hover:text-white border border-white/10 transition-all duration-200">
+                    Log In
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button onClick={closeMenu} className="w-full px-6 py-3 text-sm font-bold text-white transition-all duration-200 bg-gradient-to-r from-indigo-600 to-cyan-500 rounded-xl shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+                    Sign Up
+                  </button>
+                </SignUpButton>
+              </div>
+            </Show>
+            
+          </div>
+        </div>
+      </nav>
+    </>
   );
 }
