@@ -81,6 +81,7 @@ export const getUserProfile = async (req, res) => {
                 resumeUrl: currentUser.resumeUrl || null,
                 API_key_Gemini: currentUser.API_key_Gemini || '',
                 email_user: currentUser.email_user || '', 
+                email_pass: currentUser.email_pass || ''
             }
         });
     } catch (error) {
