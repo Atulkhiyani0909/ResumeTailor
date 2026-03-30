@@ -2,7 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar.jsx';
 import Home from './components/Home.jsx';
 import Footer from './components/Footer.jsx';
-import AtsChecker from './components/Atschecker.jsx';
+import AtsChecker from './components/AtsCheck.jsx';
 import JdMatchValidator from './components/JdMatchValidator';
 import JobsAgent from './components/JobAgent.jsx';
 import DetailedJob from './components/DetailedJob.jsx';
