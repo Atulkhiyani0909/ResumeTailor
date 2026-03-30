@@ -107,7 +107,7 @@ export const getMatchedJobs = async (req, res) => {
 
          
 
-        const pythonResponse = await axios.post('http://127.0.0.1:8000/api/matched-jobs', pythonPayload);
+        const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/matched-jobs', pythonPayload);
         
         const matched_jobs = pythonResponse.data;
 

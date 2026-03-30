@@ -53,7 +53,7 @@ export default function JdMatchValidator() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('http://localhost:3000/api/users/profile', {
+          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data?.success && res.data.user?.resumeUrl) {
@@ -100,7 +100,7 @@ export default function JdMatchValidator() {
       formData.append('jd_content', jdText);
 
       setScanText('Transmitting payload to backend...');
-      const response = await axios.post('http://localhost:3000/api/jd-matcher/analyze', formData, {
+      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/analyze', formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}` 
@@ -140,7 +140,7 @@ export default function JdMatchValidator() {
 
     try {
       const token = await getToken();
-      const response = await axios.post('http://localhost:3000/api/jd-matcher/tailor', {
+      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', {
         action: actionType,
         feedback: actionType === 'rewrite' ? userFeedback : null
       }, {
@@ -180,7 +180,7 @@ export default function JdMatchValidator() {
     setIsDownloading(true);
     try {
       const token = await getToken();
-      await axios.post('http://localhost:3000/api/jd-matcher/tailor', { action: 'accept' }, {
+      await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', { action: 'accept' }, {
         headers: { Authorization: `Bearer ${token}` } 
       }).catch(e => console.warn('Backend logging skipped', e));
 

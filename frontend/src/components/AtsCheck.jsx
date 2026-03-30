@@ -51,7 +51,7 @@ export default function AtsChecker() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('http://localhost:3000/api/users/profile', {
+          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data?.success && res.data.user?.resumeUrl) {
@@ -85,7 +85,7 @@ export default function AtsChecker() {
         formData.append('resume', uploadedFile);
       }
 
-      const response = await axios.post('http://localhost:3000/api/ats/analyze-resume', formData, {
+      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/ats/analyze-resume', formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}` 
@@ -121,7 +121,7 @@ export default function AtsChecker() {
     try {
       const token = await getToken(); 
       
-      const response = await axios.post('http://localhost:3000/api/ats/tailor-resume', 
+      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/ats/tailor-resume', 
         { user_choice: choice },
       );
       

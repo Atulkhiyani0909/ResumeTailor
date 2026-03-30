@@ -44,7 +44,7 @@ export default function JobsAgent() {
           headers = { Authorization: `Bearer ${token}` };
         }
 
-        const result = await axios.get('http://localhost:3000/api/jobs', { headers });
+        const result = await axios.get('https://resumetailor-yhfa.onrender.com/api/jobs', { headers });
         if (result.data && result.data.success) {
           const dbJobs = result.data.jobs.map(job => ({ ...job, matchScore: 0 }));
           setJobs(dbJobs);
@@ -65,7 +65,7 @@ export default function JobsAgent() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('http://localhost:3000/api/users/profile', {
+          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
             headers: { Authorization: `Bearer ${token}` }
           });
           
@@ -104,7 +104,7 @@ export default function JobsAgent() {
         formData.append('resume', file);
       }
 
-      const result = await axios.post('http://localhost:3000/api/jobs/matched-jobs', formData, {
+      const result = await axios.post('https://resumetailor-yhfa.onrender.com/api/jobs/matched-jobs', formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`

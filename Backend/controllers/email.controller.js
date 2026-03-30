@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const PYTHON_SERVICE_URL = 'http://127.0.0.1:8000';
+const PYTHON_SERVICE_URL = 'https://resumetailor-1.onrender.com';
 
 export async function draftEmail(req, res) {
   try {

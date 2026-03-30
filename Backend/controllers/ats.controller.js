@@ -41,7 +41,7 @@ export async function get_ats_score(req, res) {
       clerk_id: currentUser?.clerkId || "anonymous_user" 
     };
 
-    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/calculate-score', pythonPayload);
+    const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/calculate-score', pythonPayload);
 
     const atsData = pythonResponse.data;
 
@@ -78,7 +78,7 @@ export async function tailor_resume(req, res) {
       clerk_id: currentUser?.clerkId || "anonymous_user" 
     };
 
-    const pythonResponse = await axios.post('http://127.0.0.1:8000/api/tailor-resume', pythonPayload);
+    const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/tailor-resume', pythonPayload);
     
     const tailored_resume = pythonResponse.data;
 

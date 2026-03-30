@@ -1,7 +1,7 @@
 import axios from 'axios';
 import cloudinary from '../config/cloudinary.js';
 
-const PYTHON_AI_SERVICE_URL = 'http://127.0.0.1:8000';
+const PYTHON_AI_SERVICE_URL = 'https://resumetailor-1.onrender.com';
 
 export const analyzeGaps = async (req, res) => {
   try {
