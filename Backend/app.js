@@ -17,11 +17,13 @@ import jobsRouters from './routers/job.routers.js'
 import atsRoutes from './routers/ats.route.js'
 import jdRoutes from './routers/jdmatch.routes.js'
 import userRoutes from './routers/user.route.js'
+import emailRoutes from './routers/email.router.js'
 
 app.use('/api/jobs',jobsRouters);
 app.use('/api/ats', atsRoutes);
 app.use('/api/jd-matcher', jdRoutes);
-app.use('/api/users', userRoutes)
+app.use('/api/users', userRoutes);
+app.use('/api/email',emailRoutes);
 
 app.listen(3000,()=>{
     console.log('app is running on port 3000');

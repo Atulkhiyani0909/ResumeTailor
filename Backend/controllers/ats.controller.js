@@ -35,9 +35,10 @@ export async function get_ats_score(req, res) {
     console.log(`Executing ATS check against: ${securePdfUrl}`);
     
    
-    const pythonPayload = {
+   const pythonPayload = {
       resume_url: securePdfUrl,
-      api_key: currentUser?.API_key_Gemini || null 
+      api_key: currentUser?.API_key_Gemini || null,
+      clerk_id: currentUser?.clerkId || "anonymous_user" 
     };
 
     const pythonResponse = await axios.post('http://127.0.0.1:8000/api/calculate-score', pythonPayload);
@@ -72,8 +73,9 @@ export async function tailor_resume(req, res) {
 
     
     const pythonPayload = {
-      user_choice: user_choice,
-      api_key: currentUser?.API_key_Gemini || null 
+      resume_url: securePdfUrl,
+      api_key: currentUser?.API_key_Gemini || null,
+      clerk_id: currentUser?.clerkId || "anonymous_user" 
     };
 
     const pythonResponse = await axios.post('http://127.0.0.1:8000/api/tailor-resume', pythonPayload);

@@ -17,7 +17,7 @@ const ActionSidebar = ({
   handleAcceptAndDownload, triggerAgentApply, hasSavedResume 
 }) => (
   <div className="flex flex-col gap-4 sticky top-24 animate-[fadeIn_0.5s_ease-out_0.4s_both]">
-    {/* INITIAL MATCH SCORE INDICATOR */}
+    {/* INITIAL MATCH SCORE INDICATOR (Kept as requested) */}
     {initialMatchScore !== null && tailorStep === 'initial' && (
       <div className="bg-gradient-to-br from-indigo-500/10 to-cyan-500/5 border border-indigo-500/30 rounded-[1.5rem] p-6 shadow-[0_0_20px_rgba(99,102,241,0.1)] relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/20 rounded-full blur-[40px]"></div>
@@ -47,7 +47,6 @@ const ActionSidebar = ({
         <>
           <p className="text-xs text-slate-400 mb-5 leading-relaxed">Upload your resume to extract insights and generate a custom rewrite blueprint.</p>
           
-          {/* Dynamic buttons for Saved Resume vs Upload */}
           {hasSavedResume && (
             <button 
               onClick={() => handleAnalyzeResume(null, true)}
@@ -81,10 +80,7 @@ const ActionSidebar = ({
 
       {tailorStep === 'results' && (
         <div className="flex flex-col">
-          <div className="w-full flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl mb-4">
-            <span className="text-xs font-bold text-emerald-400">Current Match Score</span>
-            <span className="text-lg font-black text-emerald-400">{tailoredScore}%</span>
-          </div>
+          {/* REMOVED: Current Match Score display from here */}
           <button onClick={() => handleOptimization('start_tailoring')} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)] flex items-center justify-center gap-2 group">
             <svg className="w-4 h-4 group-hover:animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
             Auto-Fix Everything
@@ -94,10 +90,7 @@ const ActionSidebar = ({
 
       {tailorStep === 'preview' && (
         <div className="flex flex-col">
-          <div className="w-full flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-xl mb-5">
-            <span className="text-xs font-bold text-emerald-400">Final Match Score</span>
-            <span className="text-lg font-black text-emerald-400">{tailoredScore}%</span>
-          </div>
+          {/* REMOVED: Final Match Score display from here */}
           <button onClick={handleAcceptAndDownload} disabled={isDownloading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-black text-sm mb-6 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all">
             {isDownloading ? 'Generating PDF...' : 'Accept & Download PDF'}
           </button>
@@ -159,7 +152,7 @@ export default function DetailedJob() {
   const [error, setError] = useState(null);
   const [hasSavedResume, setHasSavedResume] = useState(false);
 
-
+  
   const [tailorStep, setTailorStep] = useState('initial'); 
   const [file, setFile] = useState(null);
   const [tailorLoading, setTailorLoading] = useState(false);
@@ -172,11 +165,13 @@ export default function DetailedJob() {
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  
+ 
   const [agentStep, setAgentStep] = useState(null); 
   const [agentProgress, setAgentProgress] = useState(0);
   const [emailDraft, setEmailDraft] = useState('');
-
+  const [emailSubject, setEmailSubject] = useState('');
+  const [senderEmail, setSenderEmail] = useState('');
+  const [receiverEmail, setReceiverEmail] = useState('');
 
   useEffect(() => {
     async function fetchJob() {
@@ -197,7 +192,6 @@ export default function DetailedJob() {
     if (id) fetchJob();
   }, [id, isSignedIn, getToken]);
 
-
   useEffect(() => {
     async function checkSavedResume() {
       if (isSignedIn) {
@@ -206,8 +200,10 @@ export default function DetailedJob() {
           const res = await axios.get('http://localhost:3000/api/users/profile', {
             headers: { Authorization: `Bearer ${token}` }
           });
-          if (res.data?.success && res.data.user?.resumeUrl) {
-            setHasSavedResume(true);
+          if (res.data?.success) {
+            if (res.data.user?.resumeUrl) setHasSavedResume(true);
+         
+            if (res.data.user?.email) setSenderEmail(res.data.user.email);
           }
         } catch (error) {
           console.error("Failed to fetch user profile", error);
@@ -216,6 +212,7 @@ export default function DetailedJob() {
     }
     checkSavedResume();
   }, [isSignedIn, getToken]);
+
 
 
   const handleAnalyzeResume = async (e, useSaved = false) => {
@@ -262,7 +259,6 @@ export default function DetailedJob() {
     }
   };
 
-
   const handleOptimization = async (actionType) => {
     if (actionType === 'rewrite' && !userFeedback.trim()) return;
     
@@ -295,7 +291,6 @@ export default function DetailedJob() {
     }
   };
 
- 
   const handleAcceptAndDownload = async () => {
     setIsDownloading(true);
     try {
@@ -341,25 +336,76 @@ export default function DetailedJob() {
   };
 
 
-  const triggerAgentApply = () => {
-    setAgentStep('tailoring');
-    setAgentProgress(0);
 
-    const interval = setInterval(() => {
-      setAgentProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setEmailDraft(`Subject: Application for ${job.title} - Atul Khiyani\n\nHi ${job.company_name} Hiring Team,\n\nI am writing to express my strong interest in the ${job.title} position. With my background in modern web development and recent experience building scalable applications, I am confident in my ability to contribute immediately to your team.\n\nI have attached my resume, which has been tailored to highlight my experience with the technologies requested in your job description.\n\nLooking forward to discussing how my skills align with your needs.\n\nBest regards,\nAtul Khiyani\nhttps://github.com/Atulkhiyani0909`);
-            setAgentStep('review');
-          }, 500);
-          return 100;
-        }
-        return prev + 1.5;
+  
+  const triggerAgentApply = async () => {
+    setAgentStep('tailoring');
+    setAgentProgress(10); 
+    
+
+    const uxInterval = setInterval(() => {
+        setAgentProgress(prev => (prev < 90 ? prev + 2 : prev));
+    }, 200);
+
+    try {
+      const token = await getToken();
+      
+
+      const response = await axios.post('http://localhost:3000/api/email/draft-email', {
+        raw_jd_content: `${job.title}\n\n${job.description}`,
+        raw_resume_content: "Use base resume profile",
+        receiver_email: job.recuriter_email
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-    }, 40);
+
+      clearInterval(uxInterval);
+      setAgentProgress(100);
+      
+      const payload = response.data;
+      
+      setEmailSubject(payload.draft_subject || 'Application Draft');
+      setEmailDraft(payload.draft_content || '');
+      setReceiverEmail(job.recuriter_email || '');
+      
+      setTimeout(() => setAgentStep('review'), 500);
+
+    } catch (error) {
+      clearInterval(uxInterval);
+      console.error("Drafting error", error);
+      alert("Failed to draft email. Ensure you have your Gemini Key saved in your secrets.");
+      setAgentStep(null);
+    }
   };
-  const handleSendEmail = () => { setAgentStep('sent'); setTimeout(() => { setAgentStep(null); }, 3000); };
+
+  const handleSendEmail = async () => {
+    try {
+        setAgentStep('sending'); 
+        const token = await getToken();
+
+        
+        const response = await axios.post('http://localhost:3000/api/email/approve-send', {
+            email_subject: emailSubject,
+            email_content: emailDraft,
+            sender_email: senderEmail,
+            receiver_email: receiverEmail
+        }, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.data?.success) {
+            setAgentStep('sent');
+            setTimeout(() => { setAgentStep(null); }, 4000);
+        } else {
+            throw new Error("Backend failed to process send request.");
+        }
+    } catch (error) {
+        console.error("Sending error:", error);
+        alert("Failed to send email. Check your SMTP App Password in your Secrets.");
+        setAgentStep('review'); 
+    }
+  };
+
 
 
   useEffect(() => {
@@ -399,7 +445,6 @@ export default function DetailedJob() {
   if (error || !job) return <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617] text-white"><h2 className="text-3xl font-black mb-4">Job Not Found</h2><p className="text-slate-400 mb-8">{error}</p><button onClick={() => navigate('/jobs-agent')} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Back to Job Board</button></div>;
 
 
-
   return (
     <div className="relative w-full min-h-screen pt-24 pb-20 bg-[#020617] text-slate-200 overflow-x-hidden font-sans">
       <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-30 pointer-events-none"></div>
@@ -408,7 +453,6 @@ export default function DetailedJob() {
 
       <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-8">
         
-        {/* HEADER */}
         <JobHeader job={job} onBack={() => navigate(-1)} />
 
         <div className="grid lg:grid-cols-12 gap-8 items-start">
@@ -416,7 +460,6 @@ export default function DetailedJob() {
           {/* LEFT COLUMN: Content Area */}
           <div className="lg:col-span-8 flex flex-col">
             
-            {/* Step 1: Just show JD */}
             {tailorStep === 'initial' && (
               <div className="bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 rounded-[2rem] p-8 md:p-10 shadow-xl animate-[fadeIn_0.5s_ease-out]">
                 <h2 className="text-xl font-black text-white flex items-center gap-2">
@@ -427,7 +470,6 @@ export default function DetailedJob() {
               </div>
             )}
 
-            {/* Step 2: Show Blueprint results below the JD */}
             {tailorStep === 'results' && analysisResults && (
               <div className="flex flex-col gap-6 animate-[fadeIn_0.5s_ease-out]">
                 <div className="bg-[#0F1629]/80 backdrop-blur-xl border border-white/5 rounded-[2rem] p-8 shadow-xl">
@@ -453,11 +495,9 @@ export default function DetailedJob() {
               </div>
             )}
 
-            {/* Step 3: Show Collapsible JD/Blueprint and the Generated PDF Preview */}
             {tailorStep === 'preview' && fixedResume && (
               <div className="flex flex-col gap-6 animate-[fadeIn_0.5s_ease-out]">
                 
-                {/* NEW: Collapsible Accordions! */}
                 <CollapsibleSection 
                   title="View Original Job Description" 
                   icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>}
@@ -472,7 +512,6 @@ export default function DetailedJob() {
                   <AnalysisResultsView analysisResults={analysisResults} />
                 </CollapsibleSection>
 
-                {/* The Generated PDF */}
                 <ResumePreview fixedResume={fixedResume} />
               </div>
             )}
@@ -500,12 +539,22 @@ export default function DetailedJob() {
           </div>
         </div>
 
-  
+        {/* MODAL INTEGRATION */}
         {agentStep && (
           <AgentModal 
-            job={job} agentStep={agentStep} agentProgress={agentProgress} 
-            emailDraft={emailDraft} setEmailDraft={setEmailDraft} 
-            setAgentStep={setAgentStep} handleSendEmail={handleSendEmail} 
+            job={job} 
+            agentStep={agentStep} 
+            agentProgress={agentProgress} 
+            emailSubject={emailSubject}
+            setEmailSubject={setEmailSubject}
+            emailDraft={emailDraft} 
+            setEmailDraft={setEmailDraft}
+            senderEmail={senderEmail}
+            setSenderEmail={setSenderEmail}
+            receiverEmail={receiverEmail}
+            setReceiverEmail={setReceiverEmail}
+            setAgentStep={setAgentStep} 
+            handleSendEmail={handleSendEmail} 
           />
         )}
 

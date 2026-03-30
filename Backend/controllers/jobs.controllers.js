@@ -6,16 +6,9 @@ import axios from 'axios'
 
 export const getAllJobs = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const skip = (page - 1) * limit;
-
-        console.log(`Fetching jobs... Page: ${page}`);
+        
 
         const jobs = await Job.find({})
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
             .select("-embeddings");
 
         const totalJobs = await Job.countDocuments();
@@ -24,8 +17,6 @@ export const getAllJobs = async (req, res) => {
             success: true,
             count: jobs.length,
             total: totalJobs,
-            totalPages: Math.ceil(totalJobs / limit),
-            currentPage: page,
             jobs: jobs
         });
 
@@ -113,6 +104,8 @@ export const getMatchedJobs = async (req, res) => {
             resume_url: securePdfUrl,
             api_key: currentUser?.API_key_Gemini || null
         };
+
+         
 
         const pythonResponse = await axios.post('http://127.0.0.1:8000/api/matched-jobs', pythonPayload);
         

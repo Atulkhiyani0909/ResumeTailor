@@ -24,7 +24,16 @@ const userSchema = new mongoose.Schema({
   },
   API_key_Gemini:{
     type:String
+  },
+  email_user: {
+    type: String,
+    description: "The Gmail address used for SMTP login"
+  },
+  email_pass: {
+    type: String,
+    description: "The 16-digit Google App Password"
   }
+  
 }, { timestamps: true });
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);

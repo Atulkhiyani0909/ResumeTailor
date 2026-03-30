@@ -1,34 +1,37 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from "react-router-dom";
-import { Show, SignInButton, SignUpButton, UserButton ,useAuth } from '@clerk/react';
+import { Show, SignInButton, SignUpButton, UserButton, useAuth } from '@clerk/react';
 import axios from 'axios';
-
-
 
 const SecretsModal = ({ isOpen, onClose }) => {
   const [resumeUrl, setResumeUrl] = useState(null);
   const [geminiKey, setGeminiKey] = useState('');
+  
+
+  const [smtpEmail, setSmtpEmail] = useState('');
+  const [smtpPass, setSmtpPass] = useState('');
+  
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-const {getToken} = useAuth();
+  const { getToken } = useAuth();
 
-useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       const fetchProfile = async () => {
         try {
-    
           const token = await getToken(); 
-
-         
           const res = await axios.get('http://localhost:3000/api/users/profile', {
             headers: { Authorization: `Bearer ${token}` } 
           });
 
           if (res.data.success) {
             setResumeUrl(res.data.user.resumeUrl);
-            setGeminiKey(res.data.user.API_key_Gemini);
+            setGeminiKey(res.data.user.API_key_Gemini || '');
+          
+            setSmtpEmail(res.data.user.email_user || '');
+          
           }
         } catch (err) {
           console.error("Failed to fetch profile", err);
@@ -46,6 +49,13 @@ useEffect(() => {
     
     if (geminiKey) {
       formData.append('API_key_Gemini', geminiKey);
+    }
+
+    if (smtpEmail) {
+      formData.append('email_user', smtpEmail);
+    }
+    if (smtpPass) {
+      formData.append('email_pass', smtpPass);
     }
     if (selectedFile) {
       formData.append('resume', selectedFile);
@@ -65,6 +75,8 @@ useEffect(() => {
         setMessage('Secrets saved successfully!');
         setResumeUrl(res.data.user.resumeUrl);
         setSelectedFile(null);
+        setSmtpPass(''); 
+        
         setTimeout(() => {
           setMessage('');
           onClose(); 
@@ -82,10 +94,11 @@ useEffect(() => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-      <div className="bg-[#0F1629] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md relative flex flex-col">
+      {/* Added max-h-[90vh] and overflow-y-auto to handle taller content */}
+      <div className="bg-[#0F1629] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md relative flex flex-col max-h-[90vh] overflow-y-auto">
         
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/5">
+        {/* Header - Made Sticky */}
+        <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#0F1629] z-10">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
             Your Secrets
@@ -107,10 +120,10 @@ useEffect(() => {
               </div>
             )}
             
-            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/10 rounded-xl bg-[#161E31] hover:bg-[#1E293B] transition-all cursor-pointer group">
-              <div className="flex flex-col items-center justify-center text-center p-4">
-                <svg className="w-6 h-6 text-slate-400 mb-2 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                <p className="text-xs font-bold text-slate-300">{selectedFile ? selectedFile.name : "Upload New Resume PDF"}</p>
+            <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-white/10 rounded-xl bg-[#161E31] hover:bg-[#1E293B] transition-all cursor-pointer group">
+              <div className="flex flex-col items-center justify-center text-center p-2">
+                <svg className="w-5 h-5 text-slate-400 mb-1 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                <p className="text-[11px] font-bold text-slate-300">{selectedFile ? selectedFile.name : "Upload New Resume PDF"}</p>
               </div>
               <input type="file" className="hidden" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files[0])} />
             </label>
@@ -124,14 +137,39 @@ useEffect(() => {
               value={geminiKey}
               onChange={(e) => setGeminiKey(e.target.value)}
               placeholder="AIzaSy..."
-              className="w-full p-4 rounded-xl bg-[#161E31] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm text-white font-mono"
+              className="w-full p-3 rounded-xl bg-[#161E31] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm text-white font-mono"
             />
-            <p className="text-[10px] text-slate-500 mt-2">Your key is stored securely. Used for local tailoring.</p>
+            <p className="text-[10px] text-slate-500 mt-2">Stored securely. Used for local tailoring.</p>
+          </div>
+
+          {/* Agent SMTP Email */}
+          <div>
+            <label className="block text-sm font-bold text-slate-300 mb-3">Agent Email (Gmail)</label>
+            <input 
+              type="email" 
+              value={smtpEmail}
+              onChange={(e) => setSmtpEmail(e.target.value)}
+              placeholder="youremail@gmail.com"
+              className="w-full p-3 rounded-xl bg-[#161E31] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm text-white font-mono"
+            />
+          </div>
+
+          {/* Agent SMTP App Password */}
+          <div>
+            <label className="block text-sm font-bold text-slate-300 mb-3">Google App Password</label>
+            <input 
+              type="password" 
+              value={smtpPass}
+              onChange={(e) => setSmtpPass(e.target.value)}
+              placeholder="xxxx xxxx xxxx xxxx"
+              className="w-full p-3 rounded-xl bg-[#161E31] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm text-white font-mono tracking-widest"
+            />
+            <p className="text-[10px] text-slate-500 mt-2">Required for the Smart Job Agent to send outreach emails on your behalf.</p>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-white/5 flex items-center justify-between bg-[#0A0F1D] rounded-b-2xl">
+        {/* Footer - Made Sticky */}
+        <div className="p-6 border-t border-white/5 flex items-center justify-between bg-[#0A0F1D] sticky bottom-0 z-10">
           <span className={`text-xs font-bold ${message.includes('success') ? 'text-emerald-400' : 'text-rose-400'}`}>
             {message}
           </span>
@@ -150,7 +188,6 @@ useEffect(() => {
 };
 
 
-// --- MAIN NAVBAR COMPONENT ---
 export default function Navbar() {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

@@ -45,10 +45,13 @@ export const analyzeGaps = async (req, res) => {
     console.log(`[NODE] Forwarding Analysis Request to Python AI for: ${securePdfUrl}`);
 
    
+    
+
     const pythonPayload = {
       resume_url: securePdfUrl,
-      jd_content: jd_content,
-      api_key: currentUser?.API_key_Gemini || null 
+      api_key: currentUser?.API_key_Gemini || null,
+      clerk_id: currentUser?.clerkId || "anonymous_user",
+      jd_content: jd_content
     };
 
     const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/analyze`, pythonPayload);
@@ -80,11 +83,12 @@ export const tailorResume = async (req, res) => {
 
     console.log(`[NODE] Forwarding Tailor Request (${action}) to Python AI...`);
 
-    
-    const pythonPayload = {
+
+     const pythonPayload = {
       action: action,
+      api_key: currentUser?.API_key_Gemini || null,
+      clerk_id: currentUser?.clerkId || "anonymous_user",
       feedback: feedback || null,
-      api_key: currentUser?.API_key_Gemini || null
     };
 
     const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/tailor`, pythonPayload);
