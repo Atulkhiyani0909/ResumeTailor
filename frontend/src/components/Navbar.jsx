@@ -31,6 +31,7 @@ const SecretsModal = ({ isOpen, onClose }) => {
             setGeminiKey(res.data.user.API_key_Gemini || '');
           
             setSmtpEmail(res.data.user.email_user || '');
+            setSmtpPass(res.data.user.email_pass || '');
           
           }
         } catch (err) {
@@ -75,7 +76,7 @@ const SecretsModal = ({ isOpen, onClose }) => {
         setMessage('Secrets saved successfully!');
         setResumeUrl(res.data.user.resumeUrl);
         setSelectedFile(null);
-        setSmtpPass(''); 
+        setSmtpPass(res.data.user.email_pass); 
         
         setTimeout(() => {
           setMessage('');
@@ -158,7 +159,7 @@ const SecretsModal = ({ isOpen, onClose }) => {
           <div>
             <label className="block text-sm font-bold text-slate-300 mb-3">Google App Password</label>
             <input 
-              type="password" 
+              type="text" 
               value={smtpPass}
               onChange={(e) => setSmtpPass(e.target.value)}
               placeholder="xxxx xxxx xxxx xxxx"
