@@ -12,6 +12,9 @@ app.use(cors("*"))
 app.use(express.json())
 
 
+app.get('/ping', (req, res) => {
+  res.send('I am alive!');
+});
 
 import jobsRouters from './routers/job.routers.js'
 import atsRoutes from './routers/ats.route.js'

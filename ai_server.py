@@ -1032,6 +1032,9 @@ def pdf_parser(url:str)->str:
 
 # In[ ]:
 
+@app.get("/ping")
+async def ping():
+    return {"status": "alive", "message": "I am awake!"}
 
 class ScoreRequest(BaseModel):
     resume_url: str
