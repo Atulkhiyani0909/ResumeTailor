@@ -186,7 +186,7 @@ class ResumeScorer(BaseModel):
 # In[ ]:
 
 
-def extract_node(state: ATSGrpahState,config:RunnableConfig):
+async def extract_node(state: ATSGrpahState,config:RunnableConfig):
   
     raw_content = state.get('resume_content_raw')
     
@@ -198,7 +198,7 @@ def extract_node(state: ATSGrpahState,config:RunnableConfig):
 
     chain = prompt | llm.with_structured_output(Resume_Details)
 
-    result = chain.invoke({'details': raw_content})
+    result = await chain.ainvoke({'details': raw_content})
 
     
     return {"parsed_resume_structured": result}
@@ -209,7 +209,7 @@ def extract_node(state: ATSGrpahState,config:RunnableConfig):
 
 from langchain_core.prompts import ChatPromptTemplate
 
-def analyzer_node(state: ATSGrpahState,config:RunnableConfig):
+async def analyzer_node(state: ATSGrpahState,config:RunnableConfig):
   
     parsed_resume = state.get('parsed_resume_structured')
 
@@ -239,7 +239,7 @@ def analyzer_node(state: ATSGrpahState,config:RunnableConfig):
     final_chain = prompt | llm.with_structured_output(ResumeScorer)
 
   
-    result = final_chain.invoke({"details": parsed_resume.model_dump_json()})
+    result = await final_chain.ainvoke({"details": parsed_resume.model_dump_json()})
 
    
     return {
@@ -283,7 +283,7 @@ def safe_json_encoder(obj):
 
 
 
-def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahState:
+async def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahState:
     parsed_resume = state.get('parsed_resume_structured', {})
     missing_keywords = state.get('missing_keywords', [])
     semantic_error = state.get('semantic_error', [])
@@ -317,7 +317,7 @@ def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahState:
     final_chain = prompt | llm.with_structured_output(ScoreModel)
 
     
-    result = final_chain.invoke({
+    result = await final_chain.ainvoke({
         "parsed_resume": json.dumps(parsed_resume, default=safe_json_encoder),
         "missing_keywords": json.dumps(missing_keywords, default=safe_json_encoder),
         "semantic_error": json.dumps(semantic_error, default=safe_json_encoder),
@@ -332,7 +332,7 @@ def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahState:
 # In[ ]:
 
 
-def needTailoredResume(state: ATSGrpahState):
+async def needTailoredResume(state: ATSGrpahState):
    
     user_choice = state.get('user_choice', False)
 
@@ -352,7 +352,7 @@ class FinalResume(BaseModel):
 # In[ ]:
 
 
-def tailor_my_resume(state: ATSGrpahState,config:RunnableConfig) -> ATSGrpahState:
+async def tailor_my_resume(state: ATSGrpahState,config:RunnableConfig) -> ATSGrpahState:
     parsed_resume = state['parsed_resume_structured']
     original_score = state['final_score']
     score_breakdown = state['score_breakdown']
@@ -399,7 +399,7 @@ Generate the highly optimized `final_resume_tailored` and the new, improved `fin
     chain = prompt | llm.with_structured_output(FinalResume)
     
     
-    result = chain.invoke({
+    result = await chain.ainvoke({
         "original_score": original_score,
         "parsed_resume": parsed_resume,
         "score_breakdown": score_breakdown,
@@ -465,7 +465,7 @@ class JDMatcher(TypedDict):
     raw_resume_content:str
     parsed_resume_structured: Resume_Details
     parsed_jd_structured:JD_Structured
-    missing_points: list[str]         
+    missing_points: list[str]        
     points_matched: list[str]        
     improvements: list[ImprovementSuggestion]
     tailored_resume_content:Resume_Details
@@ -480,7 +480,7 @@ class JDMatcher(TypedDict):
 # In[ ]:
 
 
-def jd_analyzer(state:JDMatcher,config:RunnableConfig):
+async def jd_analyzer(state:JDMatcher,config:RunnableConfig):
     raw_jd = state['raw_jd_content']
     
     llm = get_dynamic_llm(config)
@@ -492,14 +492,14 @@ def jd_analyzer(state:JDMatcher,config:RunnableConfig):
   
     chain = prompt | llm.with_structured_output(JD_Structured)
 
-    result = chain.invoke({"details":raw_jd})
+    result = await chain.ainvoke({"details":raw_jd})
 
     return {"parsed_jd_structured":result}
 
 # In[ ]:
 
 
-def resume_extract(state: JDMatcher,config:RunnableConfig):
+async def resume_extract(state: JDMatcher,config:RunnableConfig):
   
     raw_content = state['raw_resume_content']
     
@@ -512,7 +512,7 @@ def resume_extract(state: JDMatcher,config:RunnableConfig):
 
     chain = prompt | llm.with_structured_output(Resume_Details)
 
-    result = chain.invoke({'details': raw_content})
+    result = await chain.ainvoke({'details': raw_content})
 
     
     return {"parsed_resume_structured": result}
@@ -533,7 +533,7 @@ class Matcher(BaseModel):
 # In[ ]:
 
 
-def evaluator_node(state: dict, config: RunnableConfig):
+async def evaluator_node(state: dict, config: RunnableConfig):
     parsed_jd = state.get('parsed_jd_structured')
     parsed_resume = state.get('parsed_resume_structured')
 
@@ -581,7 +581,7 @@ YOUR OUTPUT MUST EXACTLY POPULATE THE FOLLOWING CATEGORIES:
         jd_json = parsed_jd.model_dump_json() if hasattr(parsed_jd, 'model_dump_json') else str(parsed_jd)
         resume_json = parsed_resume.model_dump_json() if hasattr(parsed_resume, 'model_dump_json') else str(parsed_resume)
 
-        result = chain.invoke({
+        result = await chain.ainvoke({
             "jd_details": jd_json,
             "resume_details": resume_json
         })
@@ -611,7 +611,7 @@ YOUR OUTPUT MUST EXACTLY POPULATE THE FOLLOWING CATEGORIES:
 class Score(BaseModel):
     score: int = Field(..., le=100, ge=0, description="Compare the JD and resume and provide the Score")
 
-def match_score_node(state: JDMatcher,config:RunnableConfig):
+async def match_score_node(state: JDMatcher,config:RunnableConfig):
     jd = state.get('parsed_jd_structured')
     resume = state.get('parsed_resume_structured')
     missing_points = state.get('missing_points', [])
@@ -651,7 +651,7 @@ def match_score_node(state: JDMatcher,config:RunnableConfig):
 
     try:
         
-        result = chain.invoke({
+        result = await chain.ainvoke({
             "jd": jd.model_dump_json() if hasattr(jd, 'model_dump_json') else str(jd),
             "resume": resume.model_dump_json() if hasattr(resume, 'model_dump_json') else str(resume),
             "matched": json.dumps(points_matched),
@@ -672,7 +672,7 @@ def match_score_node(state: JDMatcher,config:RunnableConfig):
 # In[ ]:
 
 
-def should_tailor(state: JDMatcher):
+async def should_tailor(state: JDMatcher):
     if state.get("user_approval") is True:
         return "tailored_resume" 
     return END 
@@ -687,7 +687,7 @@ def should_tailor(state: JDMatcher):
 # In[ ]:
 
 
-def tailored_resume(state: JDMatcher, config: RunnableConfig):
+async def tailored_resume(state: JDMatcher, config: RunnableConfig):
     jd = state['parsed_jd_structured']
     feedback = state['improvements']
     gaps = state['missing_points']
@@ -747,7 +747,7 @@ def tailored_resume(state: JDMatcher, config: RunnableConfig):
 
     chain = prompt | llm.with_structured_output(Resume_Details)
 
-    refined_resume = chain.invoke({
+    refined_resume = await chain.ainvoke({
         "current_resume_data": current_resume.model_dump_json() if hasattr(current_resume, 'model_dump_json') else str(current_resume),
         "target_jd": jd.model_dump_json() if hasattr(jd, 'model_dump_json') else str(jd),
         "improvements": feedback,
@@ -762,7 +762,7 @@ def tailored_resume(state: JDMatcher, config: RunnableConfig):
 # In[ ]:
 
 
-def rewrite_taillored_resume(state: JDMatcher):
+async def rewrite_taillored_resume(state: JDMatcher):
     
     user_thought = state.get('user_thought','Approved')
     
@@ -830,7 +830,7 @@ class Email(BaseModel):
 # In[ ]:
 
 
-def draft_email_node(state: EmailState, config: RunnableConfig):
+async def draft_email_node(state: EmailState, config: RunnableConfig):
     """Generates a concise outreach email based on Resume and JD."""
     
     
@@ -838,9 +838,13 @@ def draft_email_node(state: EmailState, config: RunnableConfig):
     
    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an expert Career Agent. Write a CONCISE, high-impact outreach email (max 150 words).
-        Focus on the top 2 matching technical skills. Use a professional yet confident tone.
-        Include placeholders like [Name] where data is missing."""),
+        ("system", """You are drafting a direct outreach email from the perspective of the CANDIDATE to the Hiring Manager or Recruiter. 
+        Write entirely in the first person ("I", "my", "me") as if you are the applicant.
+        Write a CONCISE, high-impact email (max 150 words).
+        Focus on connecting the candidate's top 2 matching technical skills directly to the job description requirements. 
+        Use a professional, confident, and enthusiastic tone. 
+        Do not use buzzwords; be direct about the value you bring.
+        Include placeholders like [Hiring Manager Name] or [Company Name] where data is missing."""),
         ("human", """
         JOB DESCRIPTION:
         {jd}
@@ -848,12 +852,12 @@ def draft_email_node(state: EmailState, config: RunnableConfig):
         CANDIDATE RESUME:
         {resume}
          
-        Draft a short application email for this role.
+        Draft a short, direct application email from the candidate to the recruiter for this role.
         """)
     ])
 
     chain = prompt | llm.with_structured_output(Email)
-    response = chain.invoke({
+    response = await chain.ainvoke({
         "jd": state.get("raw_jd_content", "N/A"),
         "resume": state.get("raw_resume_content", "N/A")
     })
@@ -872,7 +876,7 @@ import smtplib
 from email.message import EmailMessage
 from langchain_core.runnables import RunnableConfig
 
-def send_actual_email(state: dict, config: RunnableConfig):
+async def send_actual_email(state: dict, config: RunnableConfig):
     """
     Sends an email using the dynamic credentials extracted from the config.
     """
@@ -941,7 +945,7 @@ def send_actual_email(state: dict, config: RunnableConfig):
 # In[ ]:
 
 
-def send_email(state:EmailState):
+async def send_email(state:EmailState):
     permission = state['send']
 
     if permission:
@@ -1042,7 +1046,7 @@ class ScoreRequest(BaseModel):
     clerk_id: str  
 
 @app.post('/api/calculate-score')
-def calculate_score(data: ScoreRequest):
+async def calculate_score(data: ScoreRequest):
     print(f"Processing for Clerk ID: {data.clerk_id}")
     resume_text = pdf_parser(url=data.resume_url) 
     
@@ -1060,7 +1064,7 @@ def calculate_score(data: ScoreRequest):
     }
     
    
-    result = final_graph.invoke({'resume_content_raw': resume_text}, config=config)
+    result = await final_graph.ainvoke({'resume_content_raw': resume_text}, config=config)
     
     return {
         "success": True, 
@@ -1072,11 +1076,11 @@ def calculate_score(data: ScoreRequest):
 
 class UserNeed(BaseModel):
     user_choice: bool
-    clerk_id: str             
+    clerk_id: str            
     api_key: Optional[str] = None
 
 @app.post('/api/tailor-resume')
-def needTailoring(data: UserNeed):
+async def needTailoring(data: UserNeed):
     print(f"[TAILOR] Processing choice ({data.user_choice}) for Clerk ID: {data.clerk_id}")
     
     
@@ -1095,7 +1099,7 @@ def needTailoring(data: UserNeed):
     
     if data.user_choice:
         final_graph.update_state(config, {'user_choice': True})
-        result = final_graph.invoke(None, config=config)
+        result = await final_graph.ainvoke(None, config=config)
 
         return {
             'success': True,
@@ -1104,7 +1108,7 @@ def needTailoring(data: UserNeed):
     
     else:
         final_graph.update_state(config, {'user_choice': False})
-        result = final_graph.invoke(None, config=config)
+        result = await final_graph.ainvoke(None, config=config)
 
         return {
             'success': True,
@@ -1121,7 +1125,7 @@ class JdPostRequest(BaseModel):
     api_key: Optional[str] = None
 
 @app.post('/api/jd-matcher/analyze')
-def start_graph(data: JdPostRequest):
+async def start_graph(data: JdPostRequest):
     print(f"[JD MATCHER] Processing for Clerk ID: {data.clerk_id}")
     print(f"Resume URL: {data.resume_url}")
 
@@ -1147,7 +1151,7 @@ def start_graph(data: JdPostRequest):
     }
 
     
-    result = final_graph2.invoke(inputs, config=config)
+    result = await final_graph2.ainvoke(inputs, config=config)
 
     return {
         "success": True,
@@ -1160,11 +1164,11 @@ def start_graph(data: JdPostRequest):
 class TailorRequest(BaseModel):
     action: str
     feedback: Optional[str] = None
-    clerk_id: str             
+    clerk_id: str            
     api_key: Optional[str] = None
 
 @app.post('/api/jd-matcher/tailor')
-def tailor_resume(data: TailorRequest):
+async def tailor_resume(data: TailorRequest):
     try:
         print(f"[JD MATCHER TAILOR] Processing action ({data.action}) for Clerk ID: {data.clerk_id}")
         
@@ -1186,7 +1190,7 @@ def tailor_resume(data: TailorRequest):
         if action == "start_tailoring":
             print("\n🎬 PHASE 2: Generating first tailored draft...")
             final_graph2.update_state(config, {"user_approval": True})
-            result  = final_graph2.invoke(None, config=config) 
+            result  = await final_graph2.ainvoke(None, config=config) 
             print(result)
             new_state = final_graph2.get_state(config)
             return {
@@ -1208,7 +1212,7 @@ def tailor_resume(data: TailorRequest):
             
            
             final_graph2.update_state(config, state_updates)
-            result = final_graph2.invoke(None, config=config)
+            result = await final_graph2.ainvoke(None, config=config)
             
             print(result)
             new_state = final_graph2.get_state(config)
@@ -1220,7 +1224,7 @@ def tailor_resume(data: TailorRequest):
         elif action == "accept":
             print("\n✅ PHASE 4: Accepted!")
             final_graph2.update_state(config, {"user_thought": "Approved"})
-            final_graph2.invoke(None, config=config)
+            await final_graph2.ainvoke(None, config=config)
             
             new_state = final_graph2.get_state(config)
             return {
@@ -1246,7 +1250,7 @@ class MatchedJobs(BaseModel):
 
 
 @app.post('/api/matched-jobs')
-def matched_jobs(data:MatchedJobs):
+async def matched_jobs(data:MatchedJobs):
     resume_content = pdf_parser(data.resume_url)
 
     embedded_resume  = embedding_model.embed_query(resume_content)
@@ -1328,7 +1332,7 @@ async def draft_email(data: EmailAgentRequest):
     }
 
 
-    result = final_graph3.invoke(initial_state, config=config)
+    result = await final_graph3.ainvoke(initial_state, config=config)
 
     return {
         "success": True,
@@ -1380,7 +1384,7 @@ async def approve_and_send(data: ApproveRequest):
             as_node="email_node"
         )
 
-        result = final_graph3.invoke(None, config=config)
+        result = await final_graph3.ainvoke(None, config=config)
 
         return {
             "success": True,
