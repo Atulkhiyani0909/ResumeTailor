@@ -41,41 +41,7 @@ An autonomous, multi-agent platform designed to deterministically bridge the gap
     *   Runs a `$vectorSearch` aggregation against the MongoDB job cache.
     *   Executes a LangGraph state machine (`extract -> analyze -> score -> tailor`) to iteratively improve the resume based on the selected JD.
 
-## ⚙️ Local Development Setup
 
-### Prerequisites
-*   Node.js (v18+)
-*   Python (3.10+)
-*   MongoDB Atlas Account (with a configured Vector Search Index)
-
-### 1. Clone the repository
-```bash
-git clone [https://github.com/Atulkhiyani0909/ResumeTailor](https://github.com/Atulkhiyani0909/ResumeTailor)
-```
-
-cd frontend
-npm install
-
-# Create a .env file based on .env.example
-.env
-
-npm run dev
-
-
-
-python -m venv .venv
-source .venv/bin/activate # On Windows use: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Create a .env file
-.env
-
-GOOGLE_API_KEY=your_gemini_api_key
-HUGGINGFACE_API_TOKEN=your_hf_token
-MONGO_CLIENT=your_mongodb_connection_string
-
-# Run the FastAPI server asynchronously
-uvicorn ai_server:app --host 0.0.0.0 --port 8000 --reload
 
 <img width="1906" height="904" alt="image" src="https://github.com/user-attachments/assets/c7c0fa10-1dd7-456e-8723-1a2944649dd4" />
 
