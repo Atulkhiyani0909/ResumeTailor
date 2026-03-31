@@ -332,7 +332,7 @@ async def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahSt
 # In[ ]:
 
 
-async def needTailoredResume(state: ATSGrpahState):
+def needTailoredResume(state: ATSGrpahState):
    
     user_choice = state.get('user_choice', False)
 
@@ -672,7 +672,7 @@ async def match_score_node(state: JDMatcher,config:RunnableConfig):
 # In[ ]:
 
 
-async def should_tailor(state: JDMatcher):
+def should_tailor(state: JDMatcher):
     if state.get("user_approval") is True:
         return "tailored_resume" 
     return END 
@@ -762,7 +762,7 @@ async def tailored_resume(state: JDMatcher, config: RunnableConfig):
 # In[ ]:
 
 
-async def rewrite_taillored_resume(state: JDMatcher):
+def rewrite_taillored_resume(state: JDMatcher):
     
     user_thought = state.get('user_thought','Approved')
     
@@ -945,7 +945,7 @@ async def send_actual_email(state: dict, config: RunnableConfig):
 # In[ ]:
 
 
-async def send_email(state:EmailState):
+def send_email(state:EmailState):
     permission = state['send']
 
     if permission:
