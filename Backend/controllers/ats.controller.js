@@ -1,6 +1,7 @@
 import axios from 'axios';
 import cloudinary from '../config/cloudinary.js';
 
+
 export async function get_ats_score(req, res) {
   try {
    
@@ -41,7 +42,7 @@ export async function get_ats_score(req, res) {
       clerk_id: currentUser?.clerkId || "anonymous_user" 
     };
 
-    const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/calculate-score', pythonPayload);
+    const pythonResponse = await axios.post(`${process.env.PYTHON_BACKEND}/api/calculate-score`, pythonPayload);
 
     const atsData = pythonResponse.data;
 
@@ -66,6 +67,7 @@ export async function tailor_resume(req, res) {
     const currentUser = req.user; 
     const { user_choice } = req.body;
     
+    
    
     if (user_choice === undefined || user_choice === null) {
       return res.status(400).json({ success: false, message: "Need User Choice" });
@@ -73,12 +75,12 @@ export async function tailor_resume(req, res) {
 
     
     const pythonPayload = {
-      resume_url: securePdfUrl,
       api_key: currentUser?.API_key_Gemini || null,
-      clerk_id: currentUser?.clerkId || "anonymous_user" 
+      clerk_id: currentUser?.clerkId || "anonymous_user" ,
+      user_choice:user_choice
     };
 
-    const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/tailor-resume', pythonPayload);
+    const pythonResponse = await axios.post(`${process.env.PYTHON_BACKEND}/api/tailor-resume`, pythonPayload);
     
     const tailored_resume = pythonResponse.data;
 

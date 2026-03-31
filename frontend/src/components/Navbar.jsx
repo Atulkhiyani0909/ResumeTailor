@@ -22,7 +22,7 @@ const SecretsModal = ({ isOpen, onClose }) => {
       const fetchProfile = async () => {
         try {
           const token = await getToken(); 
-          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/users/profile`, {
             headers: { Authorization: `Bearer ${token}` } 
           });
 
@@ -65,7 +65,7 @@ const SecretsModal = ({ isOpen, onClose }) => {
     try {
       const token = await getToken();
 
-      const res = await axios.patch('https://resumetailor-yhfa.onrender.com/api/users/profile', formData, {
+      const res = await axios.patch(`${import.meta.env.VITE_API_URL}/api/users/profile`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}` 

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const PYTHON_SERVICE_URL = 'https://resumetailor-1.onrender.com';
+const PYTHON_SERVICE_URL = `${process.env.PYTHON_BACKEND}`;
 
 export async function draftEmail(req, res) {
   try {

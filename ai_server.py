@@ -15,7 +15,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage , SystemMessage 
 from langchain_core.runnables import RunnableConfig
 import pprint
-from typing import TypedDict , Literal ,Optional
+from typing import TypedDict , Literal ,Optional , Annotated
+import operator
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from langgraph.checkpoint.memory import InMemorySaver
@@ -473,7 +474,7 @@ class JDMatcher(TypedDict):
     projects_suggestions:list[ImprovementSuggestion]
     skills_strategy_suggestions:list[ImprovementSuggestion]
     user_approval:bool
-    human_feedback:str
+    human_feedback:Annotated[list[str], operator.add]
     user_thought:Literal["Approved","Rewrite"]
 
 # In[ ]:
@@ -686,21 +687,31 @@ def should_tailor(state: JDMatcher):
 # In[ ]:
 
 
-def tailored_resume(state: dict, config: RunnableConfig):
+def tailored_resume(state: JDMatcher, config: RunnableConfig):
+    jd = state['parsed_jd_structured']
+    feedback = state['improvements']
+    gaps = state['missing_points']
+    match_score = state['match_score']
 
-    jd=state['parsed_jd_structured']
-    original_resume=state['parsed_resume_structured']
-    feedback=state['improvements']
-    gaps=state['missing_points']
-    user_feedback = state.get('human_feedback', "No specific user instructions provided yet. Focus on the improvements and missing points.")
-    match_score=state['match_score']
+  
+    current_resume = state.get('tailored_resume_content') 
+    if not current_resume:
+        current_resume = state['parsed_resume_structured']
+
+    
+    feedback_history = state.get('human_feedback', [])
+    if feedback_history:
+        user_feedback = "\n- ".join(feedback_history)
+        user_feedback = f"Follow these user instructions (prioritize the most recent):\n- {user_feedback}"
+    else:
+        user_feedback = "No specific user instructions provided yet. Focus on the improvements and missing points."
 
     llm = get_dynamic_llm(config)
     
     SYSTEM_PROMPT = """You are a World-Class Executive Resume Architect. Your goal is to rewrite the candidate's resume to create a perfect narrative alignment with the provided Job Description (JD) while strictly adhering to the User's specific feedback.
 
         INPUTS PROVIDED:
-        1. Original Resume: The structured data of the candidate.
+        1. Current Resume: The structured data of the candidate (either original or previously tailored).
         2. Target JD: The requirements and tech stack of the hiring company.
         3. Change Log: A list of 'Improvements' and 'Missing Points' from the evaluator.
         4. USER FEEDBACK: Direct instructions from the candidate on how they want to be perceived.
@@ -720,36 +731,34 @@ def tailored_resume(state: dict, config: RunnableConfig):
         ("system", SYSTEM_PROMPT),
         ("human", """
         ### CONTEXT FOR REWRITE:
-        - **Original Resume:** {original}
+        - **Current Resume:** {current_resume_data}
         - **Target JD:** {target_jd}
-         **Match Score** {match_score}
+        - **Match Score:** {match_score}
 
         ### EVALUATOR SUGGESTIONS:
         - **Required Improvements:** {improvements}
         - **Missing Skills to Address:** {gaps}
 
         ### 🛑 CRITICAL USER FEEDBACK (PRIORITIZE THIS):
-        - **User Instructions:** {user_feedback}
+        {user_feedback}
 
         Please provide the updated Resume_Details object now.""")
-        ])
+    ])
 
-    
     chain = prompt | llm.with_structured_output(Resume_Details)
 
     refined_resume = chain.invoke({
-        "original": original_resume.model_dump_json() if hasattr(original_resume, 'model_dump_json') else str(original_resume),
+        "current_resume_data": current_resume.model_dump_json() if hasattr(current_resume, 'model_dump_json') else str(current_resume),
         "target_jd": jd.model_dump_json() if hasattr(jd, 'model_dump_json') else str(jd),
         "improvements": feedback,
         "gaps": gaps,
-        "user_feedback":user_feedback,
-        "match_score":match_score
+        "user_feedback": user_feedback,
+        "match_score": match_score
     })
 
     return {
         "tailored_resume_content": refined_resume 
     }
-
 # In[ ]:
 
 
@@ -1187,8 +1196,17 @@ def tailor_resume(data: TailorRequest):
         elif action == "rewrite":
             print("\n📝 PHASE 3: Refixing with User Feedback...")
             
-            final_graph2.update_state(config, {"human_feedback": data.feedback, "user_thought": "Rewrite"})
+           
+            state_updates = {"user_thought": "Rewrite"}
+            
+            
+            if data.feedback:
+                state_updates["human_feedback"] = [data.feedback]
+            
+           
+            final_graph2.update_state(config, state_updates)
             result = final_graph2.invoke(None, config=config)
+            
             print(result)
             new_state = final_graph2.get_state(config)
             return {
@@ -1237,7 +1255,7 @@ def matched_jobs(data:MatchedJobs):
             'path': 'embeddings', 
             'queryVector': embedded_resume,
             'numCandidates': 150, 
-            'limit': 5
+            'limit': 15
         }
     },
     {

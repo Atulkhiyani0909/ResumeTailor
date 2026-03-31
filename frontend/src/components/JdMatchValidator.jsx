@@ -53,7 +53,7 @@ export default function JdMatchValidator() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/users/profile`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data?.success && res.data.user?.resumeUrl) {
@@ -100,7 +100,7 @@ export default function JdMatchValidator() {
       formData.append('jd_content', jdText);
 
       setScanText('Transmitting payload to backend...');
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/analyze', formData, {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/analyze`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}` 
@@ -124,7 +124,7 @@ export default function JdMatchValidator() {
       setIsAILoading(false);
     } catch (error) {
       console.error(error);
-      alert("Analysis failed. Please check your backend connection.");
+      alert("Analysis failed. Please check your ( Quota Limit of API Key ).");
       setStep('input');
       setIsAILoading(false);
     }
@@ -140,7 +140,7 @@ export default function JdMatchValidator() {
 
     try {
       const token = await getToken();
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, {
         action: actionType,
         feedback: actionType === 'rewrite' ? userFeedback : null
       }, {
@@ -170,7 +170,7 @@ export default function JdMatchValidator() {
       setIsAILoading(false);
     } catch (error) {
       console.error(error);
-      alert(`${actionType === 'rewrite' ? 'Rewrite' : 'Auto-fix'} failed.`);
+      alert(`${actionType === 'rewrite' ? 'Rewrite' : 'Auto-fix'} failed. Check ( Quota Limit of API Key )`);
       setStep(actionType === 'rewrite' ? 'preview' : 'results');
       setIsAILoading(false);
     }
@@ -180,7 +180,7 @@ export default function JdMatchValidator() {
     setIsDownloading(true);
     try {
       const token = await getToken();
-      await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', { action: 'accept' }, {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { action: 'accept' }, {
         headers: { Authorization: `Bearer ${token}` } 
       }).catch(e => console.warn('Backend logging skipped', e));
 
@@ -211,7 +211,7 @@ export default function JdMatchValidator() {
       pdf.save(`Tailored_Resume_${file?.name?.replace('.pdf', '') || 'Optimized'}.pdf`);
     } catch (error) {
       console.error("PDF Generation Error: ", error);
-      alert("Failed to finalize resume or generate PDF.");
+      alert("Failed to finalize resume or generate PDF. , Please Try Again after Sometime");
     } finally {
       setIsDownloading(false);
     }

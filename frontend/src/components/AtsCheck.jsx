@@ -21,8 +21,8 @@ export default function AtsChecker() {
   const [isTailoring, setIsTailoring] = useState(false);
   const [tailoredResume, setTailoredResume] = useState(null);
   const [newScore, setNewScore] = useState(0);
-  
- 
+
+
   const [hasSavedResume, setHasSavedResume] = useState(false);
 
 
@@ -51,7 +51,7 @@ export default function AtsChecker() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/users/profile`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data?.success && res.data.user?.resumeUrl) {
@@ -65,10 +65,10 @@ export default function AtsChecker() {
     checkSavedResume();
   }, [isSignedIn, getToken]);
 
- 
+
   const executeScan = async (uploadedFile = null) => {
-   
-    setFile(uploadedFile || { name: 'Saved Profile Resume' }); 
+
+    setFile(uploadedFile || { name: 'Saved Profile Resume' });
     setScanState('scanning');
     setScanProgress(0);
     setTerminalLogs(['[SYSTEM] Initializing secure environment...']);
@@ -79,21 +79,21 @@ export default function AtsChecker() {
     try {
       const token = await getToken();
       setTerminalLogs(prev => [...prev, '[NETWORK] Transmitting encrypted payload to server...'].slice(-5));
-      
+
       const formData = new FormData();
       if (uploadedFile) {
         formData.append('resume', uploadedFile);
       }
 
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/ats/analyze-resume', formData, {
-        headers: { 
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/ats/analyze-resume`, formData, {
+        headers: {
           'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         }
       });
 
       const results = response.data?.ats_data?.response || response.data;
-      
+
       setTerminalLogs(prev => [...prev, '[SYSTEM] Analysis complete. Rendering results...'].slice(-5));
       setAtsResults(results);
 
@@ -104,6 +104,7 @@ export default function AtsChecker() {
 
     } catch (error) {
       setTerminalLogs(prev => [...prev, '[ERROR] Pipeline failure. Please try again.'].slice(-5));
+      alert('Check your Quota Limit of API Key')
       setTimeout(() => setScanState('idle'), 3000);
     }
   };
@@ -113,27 +114,32 @@ export default function AtsChecker() {
     if (uploadedFile) {
       executeScan(uploadedFile);
     }
-    if (e.target) e.target.value = null; 
+    if (e.target) e.target.value = null;
   };
 
   const handleTailorAction = async (choice) => {
     setIsTailoring(true);
     try {
-      const token = await getToken(); 
-      
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/ats/tailor-resume', 
+      const token = await getToken();
+
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/ats/tailor-resume`,
         { user_choice: choice },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
-      
+
       if (!choice) {
         setTailorState('declined');
         setIsTailoring(false);
         return;
       }
 
-      const serverPayload = response.data?.data || response.data; 
+      const serverPayload = response.data?.data || response.data;
       const atsResponse = serverPayload?.tailored_resume?.response || serverPayload?.response || serverPayload;
-      
+
       const finalResumeData = atsResponse?.tailored_resume || atsResponse?.final_resume_tailored;
       const finalScoreData = atsResponse?.final_score || 0;
 
@@ -141,7 +147,7 @@ export default function AtsChecker() {
         setTailoredResume(finalResumeData);
         setNewScore(finalScoreData);
         setTailorState('tailored');
-        
+
         localStorage.setItem('atsScanHistory', JSON.stringify({
           fileName: file?.name || 'Resume.pdf',
           results: atsResults,
@@ -154,6 +160,7 @@ export default function AtsChecker() {
       }
     } catch (err) {
       console.error("Tailoring failed", err);
+      alert('Check the Quota of Your API Key')
     } finally {
       setIsTailoring(false);
     }
@@ -208,7 +215,7 @@ export default function AtsChecker() {
   const downloadReport = async () => {
     setIsDownloading(true);
     const reportContainer = document.getElementById('report-container');
-    await new Promise(resolve => setTimeout(resolve, 300)); 
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
       const dataUrl = await toPng(reportContainer, {
@@ -250,8 +257,8 @@ export default function AtsChecker() {
   const downloadTailoredResume = async () => {
     setIsDownloading(true);
     const resumePreview = document.getElementById('resume-preview');
-    await new Promise((resolve) => setTimeout(resolve, 300)); 
-    
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     try {
       const dataUrl = await toPng(resumePreview, {
         cacheBust: true,
@@ -259,21 +266,21 @@ export default function AtsChecker() {
         pixelRatio: 2,
         style: { transform: 'scale(1)', transformOrigin: 'top left' }
       });
-      
+
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
+
       let position = 0;
       const pageHeight = pdf.internal.pageSize.getHeight();
-      
+
       while (position < pdfHeight) {
         pdf.addImage(dataUrl, 'PNG', 0, position * -1, pdfWidth, pdfHeight);
         position += pageHeight;
         if (position < pdfHeight) pdf.addPage();
       }
-      
+
       pdf.save(`Tailored_Resume_${file?.name?.replace('.pdf', '') || 'Optimized'}.pdf`);
     } catch (error) {
       console.error("Tailored PDF Download failed:", error);
@@ -345,12 +352,12 @@ export default function AtsChecker() {
                 </div>
                 <h3 className="text-xl font-black mb-2">Upload Resume</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-8">PDF or DOCX up to 2MB</p>
-                
+
                 <Show when={'signed-in'}>
                   {/* 5. Dynamically show 'Use Saved' button if they have one */}
                   <div className="flex flex-col sm:flex-row gap-3 w-full justify-center items-center">
                     {hasSavedResume && (
-                      <button 
+                      <button
                         onClick={() => executeScan(null)}
                         className="w-full py-3.5 px-4 bg-slate-800 hover:bg-slate-700 border border-indigo-500/30 text-white rounded-xl font-bold text-sm transition-all shadow-lg flex justify-center items-center gap-2 whitespace-nowrap"
                       >
@@ -678,7 +685,7 @@ export default function AtsChecker() {
 
             <div id="panels-wrapper" className="flex flex-col lg:flex-row gap-8 items-start w-full pb-4">
               <div id="left-panel" className="w-full lg:w-[35%] flex flex-col gap-6 px-2 pb-10">
-                
+
                 <div className="bg-[#111827] p-8 rounded-2xl border border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.1)] flex flex-col items-center justify-center flex-shrink-0">
                   <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-4">Optimization Complete</h3>
                   <div className="flex items-center gap-6 mb-6">

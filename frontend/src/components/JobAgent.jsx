@@ -37,14 +37,14 @@ export default function JobsAgent() {
       }
 
       try {
-       
+        
         let headers = {};
         if (isSignedIn) {
           const token = await getToken();
           headers = { Authorization: `Bearer ${token}` };
         }
 
-        const result = await axios.get('https://resumetailor-yhfa.onrender.com/api/jobs', { headers });
+        const result = await axios.get(`${import.meta.env.VITE_API_URL}/api/jobs`, { headers });
         if (result.data && result.data.success) {
           const dbJobs = result.data.jobs.map(job => ({ ...job, matchScore: 0 }));
           setJobs(dbJobs);
@@ -65,7 +65,7 @@ export default function JobsAgent() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/users/profile`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           
@@ -104,7 +104,7 @@ export default function JobsAgent() {
         formData.append('resume', file);
       }
 
-      const result = await axios.post('https://resumetailor-yhfa.onrender.com/api/jobs/matched-jobs', formData, {
+      const result = await axios.post(`${import.meta.env.VITE_API_URL}/api/jobs/matched-jobs`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
@@ -148,7 +148,7 @@ export default function JobsAgent() {
       console.error("Error matching jobs:", error);
       clearInterval(interval);
       setMatchLoading(false);
-      alert("Failed to analyze resume and match jobs. Check console for details.");
+      alert("Some Error Occured Please try After Some Time ( Check Quota Limit of API Key ) ");
     }
   };
 
@@ -226,6 +226,24 @@ export default function JobsAgent() {
                 </p>
               </div>
             )}
+
+            {/* ---> ADDED CLEAR BUTTON HERE <--- */}
+            {isMatched && !matchLoading && !loadingJobs && (
+              <div className="flex flex-col items-center md:items-end gap-3">
+                <button
+                  onClick={() => {
+                    sessionStorage.removeItem('aiMatchedJobs');
+                    window.location.reload();
+                  }}
+                  className="px-6 py-3 bg-[#161E31] hover:bg-rose-500/10 border border-white/5 hover:border-rose-500/30 text-white hover:text-rose-400 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 group whitespace-nowrap"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  Clear Results 
+                </button>
+              </div>
+            )}
+            {/* --------------------------------- */}
+
           </Show>
 
         </div>

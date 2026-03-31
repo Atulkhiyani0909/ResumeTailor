@@ -106,8 +106,9 @@ export const getMatchedJobs = async (req, res) => {
         };
 
          
-
-        const pythonResponse = await axios.post('https://resumetailor-1.onrender.com/api/matched-jobs', pythonPayload);
+        console.log(`${process.env.PYTHON_BACKEND}/api/matched-jobs`);
+        
+        const pythonResponse = await axios.post(`${process.env.PYTHON_BACKEND}/api/matched-jobs`, pythonPayload);
         
         const matched_jobs = pythonResponse.data;
 

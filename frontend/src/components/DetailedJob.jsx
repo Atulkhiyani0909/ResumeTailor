@@ -179,7 +179,7 @@ export default function DetailedJob() {
         setLoading(true);
    
         const headers = isSignedIn ? { Authorization: `Bearer ${await getToken()}` } : {};
-        const response = await axios.get(`https://resumetailor-yhfa.onrender.com/api/jobs/${id}`, { headers });
+        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/jobs/${id}`, { headers });
         
         if (response.data && response.data.job) setJob(response.data.job);
         else if (response.data) setJob(response.data); 
@@ -197,7 +197,7 @@ export default function DetailedJob() {
       if (isSignedIn) {
         try {
           const token = await getToken();
-          const res = await axios.get('https://resumetailor-yhfa.onrender.com/api/users/profile', {
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/users/profile`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data?.success) {
@@ -239,7 +239,7 @@ export default function DetailedJob() {
       formData.append('jd_content', `${job.title}\n\n${job.description}`);
 
       setScanText('Transmitting payload to backend...');
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/analyze', formData, {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/analyze`, formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}` 
@@ -253,7 +253,7 @@ export default function DetailedJob() {
       setTailoredScore(fullState.match_score || 0);
       setTailorLoading(false); 
     } catch (err) {
-      alert("Analysis failed. Please check your backend connection.");
+      alert("Analysis failed. Check Your API Key Quota Limit");
       setTailorStep('initial');
       setTailorLoading(false);
     }
@@ -269,7 +269,7 @@ export default function DetailedJob() {
 
     try {
       const token = await getToken();
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, {
         action: actionType,
         feedback: actionType === 'rewrite' ? userFeedback : null
       }, {
@@ -285,7 +285,7 @@ export default function DetailedJob() {
       
       setTailorLoading(false);
     } catch (err) {
-      alert(`${actionType === 'rewrite' ? 'Rewrite' : 'Auto-fix'} failed.`);
+      alert(`${actionType === 'rewrite' ? 'Rewrite' : 'Auto-fix'} failed. try Again later ( Check Quota Limit on API Key)`);
       setTailorStep(actionType === 'rewrite' ? 'preview' : 'results');
       setTailorLoading(false);
     }
@@ -295,7 +295,7 @@ export default function DetailedJob() {
     setIsDownloading(true);
     try {
       const token = await getToken();
-      await axios.post('https://resumetailor-yhfa.onrender.com/api/jd-matcher/tailor', { action: 'accept' }, {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { action: 'accept' }, {
         headers: { Authorization: `Bearer ${token}` }
       }).catch(e => console.warn(e));
       
@@ -329,7 +329,7 @@ export default function DetailedJob() {
 
       pdf.save(`Tailored_Resume_${file?.name?.replace('.pdf', '') || 'Optimized'}.pdf`);
     } catch (err) {
-      alert("Failed to finalize resume or generate PDF.");
+      alert("Failed to finalize resume or generate PDF. Please Try Later");
     } finally {
       setIsDownloading(false);
     }
@@ -351,7 +351,7 @@ export default function DetailedJob() {
       const token = await getToken();
       
 
-      const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/email/draft-email', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/email/draft-email`, {
         raw_jd_content: `${job.title}\n\n${job.description}`,
         raw_resume_content: "Use base resume profile",
         receiver_email: job.recuriter_email
@@ -373,7 +373,7 @@ export default function DetailedJob() {
     } catch (error) {
       clearInterval(uxInterval);
       console.error("Drafting error", error);
-      alert("Failed to draft email. Ensure you have your Gemini Key saved in your secrets.");
+      alert("Failed to draft email. Ensure you have your Gemini Key saved in your secrets. and Secrets Email and Password Avaliable");
       setAgentStep(null);
     }
   };
@@ -384,7 +384,7 @@ export default function DetailedJob() {
         const token = await getToken();
 
         
-        const response = await axios.post('https://resumetailor-yhfa.onrender.com/api/email/approve-send', {
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/email/approve-send`, {
             email_subject: emailSubject,
             email_content: emailDraft,
             sender_email: senderEmail,
