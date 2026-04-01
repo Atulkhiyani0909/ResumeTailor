@@ -17,7 +17,7 @@ const ActionSidebar = ({
   handleAcceptAndDownload, triggerAgentApply, hasSavedResume 
 }) => (
   <div className="flex flex-col gap-4 sticky top-24 animate-[fadeIn_0.5s_ease-out_0.4s_both]">
-    {/* INITIAL MATCH SCORE INDICATOR (Kept as requested) */}
+    {/* INITIAL MATCH SCORE INDICATOR */}
     {initialMatchScore !== null && tailorStep === 'initial' && (
       <div className="bg-gradient-to-br from-indigo-500/10 to-cyan-500/5 border border-indigo-500/30 rounded-[1.5rem] p-6 shadow-[0_0_20px_rgba(99,102,241,0.1)] relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/20 rounded-full blur-[40px]"></div>
@@ -80,7 +80,6 @@ const ActionSidebar = ({
 
       {tailorStep === 'results' && (
         <div className="flex flex-col">
-          {/* REMOVED: Current Match Score display from here */}
           <button onClick={() => handleOptimization('start_tailoring')} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)] flex items-center justify-center gap-2 group">
             <svg className="w-4 h-4 group-hover:animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
             Auto-Fix Everything
@@ -90,7 +89,6 @@ const ActionSidebar = ({
 
       {tailorStep === 'preview' && (
         <div className="flex flex-col">
-          {/* REMOVED: Final Match Score display from here */}
           <button onClick={handleAcceptAndDownload} disabled={isDownloading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-black text-sm mb-6 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all">
             {isDownloading ? 'Generating PDF...' : 'Accept & Download PDF'}
           </button>
@@ -123,10 +121,21 @@ const ActionSidebar = ({
         <h3 className="font-black text-white text-lg">Apply via Agent</h3>
       </div>
       <p className="text-xs text-slate-400 mb-5 leading-relaxed">Generates a tailored outreach email on your behalf and sends it directly to the recruiter.</p>
+      
       {job.recuriter_email ? (
-        <button onClick={triggerAgentApply} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)] flex items-center justify-center gap-2">Launch Apply Agent</button>
+        <button onClick={triggerAgentApply} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm transition-all shadow-[0_0_15px_rgba(99,102,241,0.3)] flex items-center justify-center gap-2">
+          Launch Apply Agent
+        </button>
       ) : (
-        <button disabled className="w-full py-3 bg-slate-800/50 text-slate-500 rounded-xl font-bold text-sm cursor-not-allowed flex items-center justify-center gap-2">No Recruiter Email Found</button>
+        <div className="flex flex-col gap-2">
+          <button disabled className="w-full py-3 bg-[#161E31] text-slate-500 border border-rose-500/20 rounded-xl font-bold text-sm cursor-not-allowed flex items-center justify-center gap-2">
+            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            Launch Apply Agent
+          </button>
+          <p className="text-[11px] text-rose-400 text-center px-1 font-medium leading-relaxed">
+            The email address for this Job poster is not available or not provided by the job poster.
+          </p>
+        </div>
       )}
     </div>
 
@@ -383,7 +392,6 @@ export default function DetailedJob() {
         setAgentStep('sending'); 
         const token = await getToken();
 
-        
         const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/email/approve-send`, {
             email_subject: emailSubject,
             email_content: emailDraft,
@@ -393,15 +401,19 @@ export default function DetailedJob() {
             headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (response.data?.success) {
+        // STRICT CHECK: Ensure the backend explicitly returns success: true
+        if (response.data && response.data.success === true) {
             setAgentStep('sent');
             setTimeout(() => { setAgentStep(null); }, 4000);
         } else {
-            throw new Error("Backend failed to process send request.");
+            // Revert back if backend encountered an error with credentials/SMTP
+            console.warn("Backend rejected the send request:", response.data);
+            alert(`Email delivery failed: ${response.data?.error || "Check your SMTP App Password in your Secrets."}`);
+            setAgentStep('review'); 
         }
     } catch (error) {
         console.error("Sending error:", error);
-        alert("Failed to send email. Check your SMTP App Password in your Secrets.");
+        alert("An error occurred. Failed to send email. Check your network or server status.");
         setAgentStep('review'); 
     }
   };
