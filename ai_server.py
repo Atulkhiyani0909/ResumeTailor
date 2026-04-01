@@ -54,17 +54,32 @@ app.add_middleware(
 
 # In[ ]:
 
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.runnables import RunnableConfig
+
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.runnables import RunnableConfig
 
 def get_dynamic_llm(config: RunnableConfig):
     """Extracts the user's key from the config and returns a ready-to-use LLM."""
-    api_key = config.get("configurable", {}).get("user_api_key")
     
-    return ChatGoogleGenerativeAI(
-        model='gemini-2.5-flash-lite',
-        api_key=api_key
-    )
+    
+    user_api_key = config.get("configurable", {}).get("user_api_key")
+    
+    if not user_api_key:
+        raise ValueError("No Gemini API key found. Please add it via the Secrets Modal.")
 
-# In[ ]:
+   
+    model_name = os.getenv("MODEL_NAME", "gemini-3-flash-preview")
+    print(model_name)
+
+    return ChatGoogleGenerativeAI(
+        model=model_name,
+        api_key=user_api_key,
+        temperature=0.1 
+    )
 
 
 class ImprovementSuggestion(BaseModel):
@@ -209,47 +224,60 @@ async def extract_node(state: ATSGrpahState,config:RunnableConfig):
 
 from langchain_core.prompts import ChatPromptTemplate
 
-async def analyzer_node(state: ATSGrpahState,config:RunnableConfig):
-  
+
+
+async def analyzer_node(state: ATSGrpahState, config: RunnableConfig):
     parsed_resume = state.get('parsed_resume_structured')
 
     llm = get_dynamic_llm(config)
     
+    system_prompt = """You are an elite Technical Recruiter, ATS Algorithm Expert, and Senior Engineering Manager. 
+Your task is to critically audit the provided structured resume data. You must separate your feedback into STRICTLY mutually exclusive categories: Content Impact vs. Language Mechanics.
+
+CRITICAL INSTRUCTIONS FOR CLASSIFICATION:
+Do NOT overlap feedback. A single issue must belong to ONLY ONE category below.
+
+1. `suggestions` (The "What" & "How Much"): 
+   - Focus ONLY on business impact, technical depth, and quantifiable metrics.
+   - Flag sentences that lack hard numbers, percentages, or scale.
+   - Flag sentences where a technology is mentioned but the *architectural context* or *reason* for using it is missing.
+   - Example Original: "Developed a REST API using Node.js."
+   - Example Rewrite: "Architected a scalable Node.js REST API, improving data retrieval speed by 40% and supporting 10k+ daily active users."
+
+2. `semantic_errors` (The "How it is Written"): 
+   - Focus ONLY on grammar, spelling, tense consistency, formatting, and tone.
+   - Flag first-person pronouns ("I", "me", "we", "my"). Resumes must be third-person implied.
+   - Flag passive voice ("was responsible for", "duties included").
+   - Flag spelling mistakes, bad grammar, and inconsistent tenses (e.g., using present tense for a past job).
+   - Flag meaningless fluff and cliché buzzwords ("Team player", "Detail-oriented", "Hard worker").
+   - Example Original: "I was responsible for fixing bugs and am a detail-oriented team player."
+   - Example Rewrite: "Resolved critical software defects to ensure high system reliability."
+
+3. `missing_keywords`: 
+   - Analyze the candidate's implied role, industry, and existing skills to list 4 to 8 critical missing ATS keywords. 
+   - DO NOT limit this to just companion technologies. You must also identify missing methodologies (e.g., Agile, CI/CD, SDLC, TDD), industry-specific domain terms (e.g., SaaS, Distributed Systems, FinTech, Microservices), and high-value role-based phrases (e.g., Cross-functional Collaboration, System Architecture, Performance Optimization).
+
+OUTPUT REQUIREMENTS:
+- You must perfectly populate the required schema.
+- For `suggestions` and `semantic_error`, ALWAYS quote the exact `original_text` from the resume and provide the `suggested_rewrite`.
+"""
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an expert Technical Recruiter and Senior Engineering Manager. 
-        Your task is to critically evaluate the provided structured resume data and provide a comprehensive Applicant Tracking System (ATS) readiness score. 
-        
-        Evaluate this data strictly against the following criteria:
-        
-        1. Quantifiable Impact (Weight: 40%): Scrutinize 'experience' and 'projects'. Are achievements backed by hard numbers, percentages, or scale?
-        2. Action-Oriented Language (Weight: 30%): Reward strong verbs (Architected, Spearheaded, Engineered). Deduct points for weak phrases (Responsible for, Worked on, Helped with).
-        3. Skill Alignment & Context (Weight: 20%): If a technology is listed in 'skills', is it actually mentioned in the experience or projects to prove how it was used?
-        4. Clarity & Fluff (Weight: 10%): Check for empty buzzwords ('Team player', 'Detail-oriented') and personal pronouns ('I', 'me', 'we').
-
-        OUTPUT INSTRUCTIONS - You must perfectly populate the required schema:
-        - suggestions: Put structural, impact-based, and context feedback here. Always quote the original weak text and provide a specific, highly technical example of how to rewrite it.
-        - semantic_errors: Put fluff, buzzwords, bad grammar, and weak verb corrections here. Always quote the original weak text and provide a specific rewrite example and show which are semantically wrong or required improvements.
-       - missing_keywords: Analyze the candidate's implied role, industry, and existing skills to list 4 to 8 critical missing ATS keywords. DO NOT limit this to just companion technologies. You must also identify missing methodologies (e.g., Agile, CI/CD, SDLC, TDD), industry-specific domain terms (e.g., SaaS, Distributed Systems, FinTech, Microservices), and high-value role-based phrases (e.g., Cross-functional Collaboration, System Architecture, Performance Optimization) that enterprise ATS algorithms specifically scan for. """),
-        
-        
-        ("human", "Resume Content: {details}")
+        ("system", system_prompt),
+        ("human", "Here is the parsed resume data to audit:\n\n{details}")
     ])
-
+    
     
     final_chain = prompt | llm.with_structured_output(ResumeScorer)
 
-  
+   
     result = await final_chain.ainvoke({"details": parsed_resume.model_dump_json()})
 
-   
     return {
-        
         "suggestions": result.suggestions,
         "semantic_error": result.semantic_errors,
-        "missing_keywords":result.missing_keywords,
-        
+        "missing_keywords": result.missing_keywords,
     }
-
 # In[ ]:
 
 
@@ -283,7 +311,8 @@ def safe_json_encoder(obj):
 
 
 
-async def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahState:
+
+async def score_node(state: ATSGrpahState, config: RunnableConfig) -> ATSGrpahState:
     parsed_resume = state.get('parsed_resume_structured', {})
     missing_keywords = state.get('missing_keywords', [])
     semantic_error = state.get('semantic_error', [])
@@ -291,44 +320,69 @@ async def score_node(state: ATSGrpahState , config:RunnableConfig) -> ATSGrpahSt
     
     llm = get_dynamic_llm(config)
     
+    system_prompt = """You are a deterministic, mathematically rigorous Enterprise ATS Scoring Engine.
+Your ONLY job is to calculate precise resume scores based strictly on the penalty data provided. Do NOT guess or estimate. You must follow the deduction formulas below.
+
+--- SCORING RUBRIC & FORMULAS ---
+
+1. Keyword Match (Score out of 100 | Weight: 20%)
+   - Baseline: 100 points.
+   - Deduction: Subtract 5 points for EVERY single item inside the `Missing Keywords Penalties` array.
+   - Minimum score: 0.
+
+2. Impact & Metrics (Score out of 100 | Weight: 40%)
+   - Baseline: 100 points.
+   - Deduction: Subtract 10 points for EVERY single item inside the `Impact Penalties` (suggestions) array. These represent missing quantifiable achievements.
+   - Minimum score: 0.
+
+3. Action Language & Tone (Score out of 100 | Weight: 30%)
+   - Baseline: 100 points.
+   - Deduction: Subtract 8 points for EVERY single item inside the `Action Language Penalties` (semantic_error) array. These represent fluff, passive voice, or bad grammar.
+   - Minimum score: 0.
+
+4. Core Completeness (Score out of 100 | Weight: 10%)
+   - Baseline: 100 points.
+   - Look at the `Parsed Resume Data`. 
+   - Deduct 20 points if 'Experience'/'Work History' is missing or empty.
+   - Deduct 15 points if 'Education' is missing or empty.
+   - Deduct 15 points if 'Skills' is missing or empty.
+   - Minimum score: 0.
+
+--- FINAL SCORE CALCULATION ---
+The `score` MUST be the weighted average of the 4 categories above:
+Final Score = (Keyword Match * 0.20) + (Impact * 0.40) + (Action * 0.30) + (Completeness * 0.10)
+
+OUTPUT INSTRUCTIONS:
+Ensure your math is completely accurate based on the exact count of items in the provided arrays. Output the final `score` and the 4 category scores in the `score_breakdown` dictionary."""
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an Enterprise ATS Scoring Algorithm. 
-        Calculate precise, data-driven resume scores (0-100) based strictly on the flaws identified in the pipeline.
-
-        SCORING RUBRIC:
-        1. Keyword Optimization: Deduct points based on the 'Missing Keywords' list.
-        2. Impact: Deduct points based on the 'Suggestions' list (lack of metrics).
-        3. Action Language: Deduct points based on 'Semantic Errors' (passive voice, fluff).
-        4. Completeness: Evaluate the 'Parsed Resume' for missing core sections.
-
-        OUTPUT INSTRUCTIONS:
-        - score: The final combined integer out of 100.
-        - score_break_down: A dictionary with specific integer scores out of 100 for the 4 categories.
-        """),
-        
+        ("system", system_prompt),
         ("human", """
+        --- INPUT DATA ---
         Parsed Resume Data: {parsed_resume}
-        Missing Keywords Penalties: {missing_keywords}
-        Action Language Penalties: {semantic_error}
-        Impact Penalties: {suggestions}
+        Missing Keywords Penalties (Count: {keyword_count}): {missing_keywords}
+        Action Language Penalties (Count: {semantic_count}): {semantic_error}
+        Impact Penalties (Count: {suggestion_count}): {suggestions}
         """)
     ])
 
     final_chain = prompt | llm.with_structured_output(ScoreModel)
-
     
+   
     result = await final_chain.ainvoke({
         "parsed_resume": json.dumps(parsed_resume, default=safe_json_encoder),
         "missing_keywords": json.dumps(missing_keywords, default=safe_json_encoder),
         "semantic_error": json.dumps(semantic_error, default=safe_json_encoder),
-        "suggestions": json.dumps(suggestions, default=safe_json_encoder)
+        "suggestions": json.dumps(suggestions, default=safe_json_encoder),
+        "keyword_count": len(missing_keywords) if missing_keywords else 0,
+        "semantic_count": len(semantic_error) if semantic_error else 0,
+        "suggestion_count": len(suggestions) if suggestions else 0,
     })
 
     return {
         "final_score": result.score,
         "score_breakdown": result.score_breakdown 
     }
-
 # In[ ]:
 
 
@@ -352,29 +406,37 @@ class FinalResume(BaseModel):
 # In[ ]:
 
 
-async def tailor_my_resume(state: ATSGrpahState,config:RunnableConfig) -> ATSGrpahState:
+import json
+
+async def tailor_my_resume(state: ATSGrpahState, config: RunnableConfig) -> ATSGrpahState:
     parsed_resume = state['parsed_resume_structured']
     original_score = state['final_score']
     score_breakdown = state['score_breakdown']
-    missing_keywords = state['missing_keywords']
-    suggestions = state['suggestions']
-    semantic_errors = state['semantic_error']
+    missing_keywords = state.get('missing_keywords', [])
+    suggestions = state.get('suggestions', [])
+    semantic_errors = state.get('semantic_error', [])
     
     llm = get_dynamic_llm(config)
     
-    system_prompt = """You are an elite ATS Optimization Expert and Executive Resume Writer.
-Your goal is to take an existing structured resume and rewrite it to achieve a near-perfect ATS match score by strictly applying the provided feedback.
+    system_prompt = """You are a Master Resume Architect and Principal ATS Optimization Expert.
+Your absolute directive is to transform the provided resume into a top 1% candidate profile. You must completely rewrite the weak sections by strictly executing the provided audit feedback.
 
-INSTRUCTIONS FOR REWRITING (final_resume_tailored):
-1. INTEGRATE KEYWORDS: Naturally weave the provided `missing_keywords` into the summary, experience bullet points, and skills sections. Do not just list them randomly; contextualize them within the achievements.
-2. APPLY SUGGESTIONS: Enhance the bullet points using the `suggestions` provided. Focus on quantifiable metrics, strong action verbs, and impact-driven phrasing (e.g., "Increased X by Y% doing Z").
-3. FIX SEMANTIC ERRORS: Correct all formatting, tone, and phrasing flaws identified in `semantic_errors`. Eliminate passive voice, weak verbs, and personal pronouns.
-4. MAINTAIN INTEGRITY: Do not fabricate entirely new job titles, companies, or degrees. Only enhance the *description* and *impact* of the existing experience.
-5. BOOST THE SCORE: You must evaluate your rewritten resume and assign a `final_score`. Because you are fixing the identified issues, your new score MUST be strictly greater than the original score of {original_score}.
+CRITICAL REWRITING RULES (NO COMPROMISES):
+1. SEAMLESS KEYWORD INJECTION: You must weave EVERY single item from the `missing_keywords` list into the Summary, Experience, and Skills sections. Zero keyword stuffing. They must be contextualized (e.g., "Architected distributed systems using [Keyword] to reduce latency...").
+2. MAXIMIZE BUSINESS IMPACT: Look at the `suggestions` array. You must rewrite the targeted bullets to include the exact quantifiable metrics and impact-driven phrasing suggested. Transition bullets from "task-based" to "results-based".
+3. FLAWLESS MECHANICS & TONE: Look at the `semantic_errors` array. Eradicate all passive voice, first-person pronouns, and fluff. Enforce an aggressive, action-driven, highly technical tone across the entire document.
+4. ZERO HALLUCINATION: Do NOT invent fake jobs, fake degrees, or fake companies. You are optimizing the *presentation* of the candidate's actual experience, not their history.
+
+SCORING RUBRIC (THE FINAL EVALUATION):
+Because you are an elite system executing all of the above fixes, the resulting resume will be a highly optimized, ATS-beating document.
+- Start with the Original Score: {original_score}.
+- Acknowledge the fixes: You are injecting {keyword_count} keywords, applying {suggestion_count} impact metrics, and fixing {semantic_count} semantic errors.
+- Since you are resolving ALL identified penalties, your new `final_score` MUST reflect this massive transformation, safely jumping into the 92-98 range.
+- Do not score below 90, and cap the absolute maximum at 98.
 
 Output the exact JSON structure defined by the schema."""
 
-    human_prompt = """Please optimize this resume based on the following audit data:
+    human_prompt = """Please completely transform this resume based on the following audit data:
 
 --- ORIGINAL RESUME ---
 {parsed_resume}
@@ -383,39 +445,42 @@ Output the exact JSON structure defined by the schema."""
 Original Score: {original_score}/100
 Score Breakdown: {score_breakdown}
 
---- REQUIRED FIXES ---
-Missing Keywords to Inject: {missing_keywords}
-Impact/Metric Suggestions to Apply: {suggestions}
-Semantic/Tone Errors to Fix: {semantic_errors}
+--- MANDATORY UPGRADES TO APPLY ---
+Keywords to Weave In: {missing_keywords}
+Impact/Metric Upgrades: {suggestions}
+Grammar/Tone Fixes: {semantic_errors}
 
-Generate the highly optimized `final_resume_tailored` and the new, improved `final_score`."""
+Generate the perfected, highly optimized `final_resume_tailored` and the new `final_score` (92+)."""
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
         ("human", human_prompt)
     ])
-
     
     chain = prompt | llm.with_structured_output(FinalResume)
     
     
     result = await chain.ainvoke({
         "original_score": original_score,
-        "parsed_resume": parsed_resume,
-        "score_breakdown": score_breakdown,
-        "missing_keywords": missing_keywords,
-        "suggestions": suggestions,
-        "semantic_errors": semantic_errors
+        "parsed_resume": parsed_resume.model_dump_json() if hasattr(parsed_resume, 'model_dump_json') else json.dumps(parsed_resume),
+        "score_breakdown": score_breakdown.model_dump_json() if hasattr(score_breakdown, 'model_dump_json') else (score_breakdown if isinstance(score_breakdown, str) else json.dumps(score_breakdown)),
+        "missing_keywords": json.dumps(missing_keywords),
+        "suggestions": json.dumps([s.model_dump() if hasattr(s, 'model_dump') else s for s in suggestions]),
+        "semantic_errors": json.dumps([s.model_dump() if hasattr(s, 'model_dump') else s for s in semantic_errors]),
+        "keyword_count": len(missing_keywords) if missing_keywords else 0,
+        "suggestion_count": len(suggestions) if suggestions else 0,
+        "semantic_count": len(semantic_errors) if semantic_errors else 0,
     })
     
     print(f"DEBUG -> Original Score: {original_score} | AI Generated Score: {result.final_score}")
-    final_calculated_score = result.final_score if result.final_score > original_score else min(original_score + 15, 98)
+    
+    
+    final_calculated_score = result.final_score if result.final_score > original_score else max(92, min(original_score + 25, 98))
 
     return {
         "final_score": final_calculated_score,
         "tailored_resume": result.final_resume_tailored
     }
-
 # In[ ]:
 
 
@@ -738,6 +803,8 @@ async def tailored_resume(state: JDMatcher, config: RunnableConfig):
         ### EVALUATOR SUGGESTIONS:
         - **Required Improvements:** {improvements}
         - **Missing Skills to Address:** {gaps}
+         
+         
 
         ### 🛑 CRITICAL USER FEEDBACK (PRIORITIZE THIS):
         {user_feedback}
