@@ -810,7 +810,7 @@ final_graph2
 # In[ ]:
 
 
-class EmailState(TypedDict):
+class   EmailState(TypedDict):
     sender_email: str            
     receiver_email: str          
     raw_jd_content:str
@@ -876,7 +876,7 @@ import smtplib
 from email.message import EmailMessage
 from langchain_core.runnables import RunnableConfig
 
-async def send_actual_email(state: dict, config: RunnableConfig):
+async def send_actual_email(state: EmailState, config: RunnableConfig):
     """
     Sends an email using the dynamic credentials extracted from the config.
     """
@@ -936,11 +936,11 @@ async def send_actual_email(state: dict, config: RunnableConfig):
             server.send_message(msg)
         
         print(f"✅ Email sent successfully from {smtp_user}")
-        return "Success"
+        return {"send": True}
         
     except Exception as e:
         print(f"SMTP Error: {e}")
-        return str(e)
+        return {"send": False}
 
 # In[ ]:
 
