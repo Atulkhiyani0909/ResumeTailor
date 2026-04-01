@@ -152,10 +152,10 @@ class ATSGrpahState(TypedDict):
     
     # Granular Scoring
     final_score: int
-    score_breakdown: ScoreBreakdown = Field(
-        ..., 
-        description="The granular score breakdown across 4 specific categories."
-    ) 
+    score_breakdown: Annotated[
+        "ScoreBreakdown", 
+        Field(description="The granular score breakdown across 4 specific categories.")
+    ]
     
     # Core Feedback
     suggestions: list[ImprovementSuggestion]
@@ -370,7 +370,7 @@ INSTRUCTIONS FOR REWRITING (final_resume_tailored):
 2. APPLY SUGGESTIONS: Enhance the bullet points using the `suggestions` provided. Focus on quantifiable metrics, strong action verbs, and impact-driven phrasing (e.g., "Increased X by Y% doing Z").
 3. FIX SEMANTIC ERRORS: Correct all formatting, tone, and phrasing flaws identified in `semantic_errors`. Eliminate passive voice, weak verbs, and personal pronouns.
 4. MAINTAIN INTEGRITY: Do not fabricate entirely new job titles, companies, or degrees. Only enhance the *description* and *impact* of the existing experience.
-5. BOOST THE SCORE: You must evaluate your rewritten resume and assign a `final_score`. Because you are fixing the identified issues, your new score MUST be strictly greater than the original score of {original_score}, aiming for a highly optimized 90-100 range.
+5. BOOST THE SCORE: You must evaluate your rewritten resume and assign a `final_score`. Because you are fixing the identified issues, your new score MUST be strictly greater than the original score of {original_score}.
 
 Output the exact JSON structure defined by the schema."""
 
@@ -408,7 +408,7 @@ Generate the highly optimized `final_resume_tailored` and the new, improved `fin
         "semantic_errors": semantic_errors
     })
     
-    
+    print(f"DEBUG -> Original Score: {original_score} | AI Generated Score: {result.final_score}")
     final_calculated_score = result.final_score if result.final_score > original_score else min(original_score + 15, 98)
 
     return {

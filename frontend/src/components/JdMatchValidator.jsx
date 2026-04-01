@@ -302,8 +302,11 @@ export default function JdMatchValidator() {
                             </div>
                             <p className="text-sm font-bold text-slate-300 text-center truncate w-full px-2">{file && file.name !== 'Saved Profile Resume' ? file.name : "Upload New File"}</p>
                             <input type="file" className="hidden" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files[0])} />
+                           <p className="text-[10px] text-slate-400 mt-2 font-medium">Note: Resume must be 1 page and less than 2MB.</p>
                           </label>
+                          
                         </div>
+                        
                       ) : (
                         <label className="flex flex-col items-center justify-center w-full h-full min-h-[200px] border-2 border-dashed border-indigo-500/30 rounded-2xl bg-indigo-500/5 hover:bg-indigo-500/10 transition-all cursor-pointer group">
                           <div className="flex flex-col items-center justify-center text-center p-6">

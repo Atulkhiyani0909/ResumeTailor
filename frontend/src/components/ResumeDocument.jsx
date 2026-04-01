@@ -8,6 +8,8 @@ import { Show, SignUpButton } from '@clerk/react';
 
 
 export const ResumeDocument = ({ fixedResume }) => {
+ 
+  
   if (!fixedResume) return null;
   
   const achievementsList = fixedResume.achievements || fixedResume.achievenments || [];

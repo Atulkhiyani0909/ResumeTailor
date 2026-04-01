@@ -7,7 +7,6 @@ const SecretsModal = ({ isOpen, onClose }) => {
   const [resumeUrl, setResumeUrl] = useState(null);
   const [geminiKey, setGeminiKey] = useState('');
   
-
   const [smtpEmail, setSmtpEmail] = useState('');
   const [smtpPass, setSmtpPass] = useState('');
   
@@ -32,7 +31,6 @@ const SecretsModal = ({ isOpen, onClose }) => {
           
             setSmtpEmail(res.data.user.email_user || '');
             setSmtpPass(res.data.user.email_pass || '');
-          
           }
         } catch (err) {
           console.error("Failed to fetch profile", err);
@@ -95,7 +93,6 @@ const SecretsModal = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-      {/* Added max-h-[90vh] and overflow-y-auto to handle taller content */}
       <div className="bg-[#0F1629] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md relative flex flex-col max-h-[90vh] overflow-y-auto">
         
         {/* Header - Made Sticky */}
@@ -128,6 +125,8 @@ const SecretsModal = ({ isOpen, onClose }) => {
               </div>
               <input type="file" className="hidden" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files[0])} />
             </label>
+            {/* NEW NOTE ADDED HERE */}
+            <p className="text-[10px] text-slate-400 mt-2 font-medium">Note: Resume must be 1 page and less than 2MB.</p>
           </div>
 
           {/* API Key */}

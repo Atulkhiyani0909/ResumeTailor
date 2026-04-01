@@ -370,7 +370,9 @@ export default function AtsChecker() {
                       {hasSavedResume ? "Upload New" : "Browse Files"}
                       <input type="file" className="hidden" accept=".pdf,.docx" onChange={handleUpload} />
                     </label>
+                    
                   </div>
+                   <p className="text-[10px] text-slate-400 mt-2 font-medium">Note: Resume must be 1 page and less than 2MB.</p>
                 </Show>
 
                 <Show when={'signed-out'}>
