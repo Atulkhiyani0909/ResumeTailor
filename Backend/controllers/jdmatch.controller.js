@@ -5,8 +5,9 @@ const PYTHON_AI_SERVICE_URL = `${process.env.PYTHON_BACKEND}`;
 
 export const analyzeGaps = async (req, res) => {
   try {
-    const { jd_content } = req.body;
-   
+    // Catch the session_id sent from React's FormData
+    const { jd_content, session_id } = req.body;
+    
     const currentUser = req.user; 
     let securePdfUrl = null;
 
@@ -17,7 +18,6 @@ export const analyzeGaps = async (req, res) => {
       });
     }
 
-    
     if (req.file) {
       console.log("[NODE] New file uploaded. Processing to Cloudinary...");
       const b64 = Buffer.from(req.file.buffer).toString('base64');
@@ -29,12 +29,10 @@ export const analyzeGaps = async (req, res) => {
       });
       securePdfUrl = cloudinaryResponse.secure_url;
     } 
-    
     else if (currentUser && currentUser.resumeUrl) {
       console.log("[NODE] No file uploaded. Using saved Base Resume from profile...");
       securePdfUrl = currentUser.resumeUrl;
     } 
-    
     else {
       return res.status(400).json({ 
         success: false, 
@@ -44,14 +42,13 @@ export const analyzeGaps = async (req, res) => {
 
     console.log(`[NODE] Forwarding Analysis Request to Python AI for: ${securePdfUrl}`);
 
-   
-    
-
+    // Add session_id to the payload heading to Python
     const pythonPayload = {
       resume_url: securePdfUrl,
       api_key: currentUser?.API_key_Gemini || null,
       clerk_id: currentUser?.clerkId || "anonymous_user",
-      jd_content: jd_content
+      jd_content: jd_content,
+      session_id: session_id || null
     };
 
     const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/analyze`, pythonPayload);
@@ -72,7 +69,9 @@ export const analyzeGaps = async (req, res) => {
 export const tailorResume = async (req, res) => {
   try {
     const currentUser = req.user;
-    const { action, feedback } = req.body;
+    
+    // Catch the session_id sent from React's JSON body
+    const { action, feedback, session_id } = req.body;
 
     if (!action) {
       return res.status(400).json({ 
@@ -83,12 +82,13 @@ export const tailorResume = async (req, res) => {
 
     console.log(`[NODE] Forwarding Tailor Request (${action}) to Python AI...`);
 
-
-     const pythonPayload = {
+    // Add session_id to the payload heading to Python
+    const pythonPayload = {
       action: action,
       api_key: currentUser?.API_key_Gemini || null,
       clerk_id: currentUser?.clerkId || "anonymous_user",
       feedback: feedback || null,
+      session_id: session_id || null
     };
 
     const pythonResponse = await axios.post(`${PYTHON_AI_SERVICE_URL}/api/jd-matcher/tailor`, pythonPayload);

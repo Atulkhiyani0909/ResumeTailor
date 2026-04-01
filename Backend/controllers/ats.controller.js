@@ -1,14 +1,14 @@
 import axios from 'axios';
 import cloudinary from '../config/cloudinary.js';
 
-
 export async function get_ats_score(req, res) {
   try {
-   
     const currentUser = req.user; 
+    
+    const { session_id } = req.body; 
+    
     let securePdfUrl = null;
 
-   
     if (req.file) {
       console.log("New file uploaded. Processing to Cloudinary...");
       const b64 = Buffer.from(req.file.buffer).toString('base64');
@@ -20,12 +20,10 @@ export async function get_ats_score(req, res) {
       });
       securePdfUrl = cloudinaryResponse.secure_url;
     } 
-  
     else if (currentUser && currentUser.resumeUrl) {
       console.log("No file uploaded. Using saved Base Resume from profile...");
       securePdfUrl = currentUser.resumeUrl;
     } 
-    
     else {
       return res.status(400).json({ 
         success: false, 
@@ -35,11 +33,12 @@ export async function get_ats_score(req, res) {
 
     console.log(`Executing ATS check against: ${securePdfUrl}`);
     
-   
-   const pythonPayload = {
+    
+    const pythonPayload = {
       resume_url: securePdfUrl,
       api_key: currentUser?.API_key_Gemini || null,
-      clerk_id: currentUser?.clerkId || "anonymous_user" 
+      clerk_id: currentUser?.clerkId || "anonymous_user",
+      session_id: session_id || null 
     };
 
     const pythonResponse = await axios.post(`${process.env.PYTHON_BACKEND}/api/calculate-score`, pythonPayload);
@@ -65,10 +64,10 @@ export async function get_ats_score(req, res) {
 export async function tailor_resume(req, res) {
   try {
     const currentUser = req.user; 
-    const { user_choice } = req.body;
     
     
-   
+    const { user_choice, session_id } = req.body; 
+    
     if (user_choice === undefined || user_choice === null) {
       return res.status(400).json({ success: false, message: "Need User Choice" });
     }
@@ -76,8 +75,9 @@ export async function tailor_resume(req, res) {
     
     const pythonPayload = {
       api_key: currentUser?.API_key_Gemini || null,
-      clerk_id: currentUser?.clerkId || "anonymous_user" ,
-      user_choice:user_choice
+      clerk_id: currentUser?.clerkId || "anonymous_user",
+      user_choice: user_choice,
+      session_id: session_id || null
     };
 
     const pythonResponse = await axios.post(`${process.env.PYTHON_BACKEND}/api/tailor-resume`, pythonPayload);

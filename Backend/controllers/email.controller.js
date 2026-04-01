@@ -5,19 +5,21 @@ const PYTHON_SERVICE_URL = `${process.env.PYTHON_BACKEND}`;
 export async function draftEmail(req, res) {
   try {
     const currentUser = req.user; 
-    const { raw_jd_content, raw_resume_content, receiver_email } = req.body;
+    
+    // Catch the session_id sent from React's JSON body
+    const { raw_jd_content, raw_resume_content, receiver_email, session_id } = req.body;
 
+    // Add session_id to the payload heading to Python
     const pythonPayload = {
       clerk_id: currentUser.clerkId,
       api_key: currentUser.API_key_Gemini,
       email_user: currentUser.email_user, 
       email_pass: currentUser.email_pass,
       raw_jd_content,
-      raw_resume_content      
+      raw_resume_content,
+      session_id: session_id || null 
     };
 
- 
-    
     const response = await axios.post(`${PYTHON_SERVICE_URL}/api/agent/draft-email`, pythonPayload);
 
     return res.status(200).json(response.data);
@@ -30,13 +32,17 @@ export async function draftEmail(req, res) {
 export async function approveAndSendEmail(req, res) {
   try {
     const currentUser = req.user;
+    
+   
     const { 
       email_subject, 
       email_content, 
       sender_email, 
-      receiver_email 
+      receiver_email,
+      session_id 
     } = req.body;
 
+    // Add session_id to the payload heading to Python
     const pythonPayload = {
       clerk_id: currentUser.clerkId,
       api_key: currentUser.API_key_Gemini,
@@ -46,8 +52,9 @@ export async function approveAndSendEmail(req, res) {
       email_content,    
       sender_email,    
       receiver_email,   
-      approve: true ,
-      resume_url : currentUser.resumeUrl    
+      approve: true,
+      resume_url: currentUser.resumeUrl,
+      session_id: session_id || null 
     };
 
     const response = await axios.post(`${PYTHON_SERVICE_URL}/api/agent/approve-send`, pythonPayload);

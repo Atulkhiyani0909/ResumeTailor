@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import { Show, SignUpButton, useAuth } from '@clerk/react';
 import { ResumeDocument } from './ResumeDocument';
 import { CollapsibleSection } from './CollapsiableSection';
+import { v4 as uuidv4 } from 'uuid'; // <-- ADD THIS IMPORT
 
 export default function AtsChecker() {
 
@@ -21,10 +22,10 @@ export default function AtsChecker() {
   const [isTailoring, setIsTailoring] = useState(false);
   const [tailoredResume, setTailoredResume] = useState(null);
   const [newScore, setNewScore] = useState(0);
-
-
   const [hasSavedResume, setHasSavedResume] = useState(false);
-
+  
+  // NEW: Keep track of the current session so the AI remembers the context between scanning and tailoring
+  const [sessionId, setSessionId] = useState(null); 
 
   useEffect(() => {
     const savedData = localStorage.getItem('atsScanHistory');
@@ -33,6 +34,7 @@ export default function AtsChecker() {
         const parsed = JSON.parse(savedData);
         setAtsResults(parsed.results);
         setFile({ name: parsed.fileName });
+        setSessionId(parsed.sessionId); // Load the session ID from cache
         if (parsed.tailoredResume) {
           setTailoredResume(parsed.tailoredResume);
           setNewScore(parsed.newScore);
@@ -44,7 +46,6 @@ export default function AtsChecker() {
       }
     }
   }, []);
-
 
   useEffect(() => {
     async function checkSavedResume() {
@@ -67,7 +68,6 @@ export default function AtsChecker() {
 
 
   const executeScan = async (uploadedFile = null) => {
-
     setFile(uploadedFile || { name: 'Saved Profile Resume' });
     setScanState('scanning');
     setScanProgress(0);
@@ -75,6 +75,10 @@ export default function AtsChecker() {
     setAtsResults(null);
     setTailorState('idle');
     setTailoredResume(null);
+    
+    // 1. Generate a brand new session ID for this specific resume upload
+    const currentSessionId = uuidv4();
+    setSessionId(currentSessionId);
 
     try {
       const token = await getToken();
@@ -84,6 +88,9 @@ export default function AtsChecker() {
       if (uploadedFile) {
         formData.append('resume', uploadedFile);
       }
+      
+      // 2. Append the session ID to the form data so Node.js can pass it to Python
+      formData.append('session_id', currentSessionId);
 
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/ats/analyze-resume`, formData, {
         headers: {
@@ -99,7 +106,8 @@ export default function AtsChecker() {
 
       localStorage.setItem('atsScanHistory', JSON.stringify({
         fileName: uploadedFile?.name || 'Saved Profile Resume',
-        results: results
+        results: results,
+        sessionId: currentSessionId // Save it locally
       }));
 
     } catch (error) {
@@ -123,7 +131,10 @@ export default function AtsChecker() {
       const token = await getToken();
 
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/ats/tailor-resume`,
-        { user_choice: choice },
+        { 
+          user_choice: choice,
+          session_id: sessionId 
+        },
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -153,7 +164,8 @@ export default function AtsChecker() {
           results: atsResults,
           tailoredResume: finalResumeData,
           newScore: finalScoreData,
-          tailorState: 'tailored'
+          tailorState: 'tailored',
+          sessionId: sessionId // keep it in cache
         }));
       } else {
         console.error("Could not extract tailored resume from response:", response.data);
@@ -210,7 +222,9 @@ export default function AtsChecker() {
     setShowRaw(false);
     setTailoredResume(null);
     setTailorState('idle');
+    setSessionId(null); 
   };
+
 
   const downloadReport = async () => {
     setIsDownloading(true);

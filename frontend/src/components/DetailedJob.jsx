@@ -10,6 +10,7 @@ import { JobDescriptionView } from './jobDescriptionView';
 import { AnalysisResultsView } from './AnalysisResultView';
 import { ResumePreview } from './ResumePreview';
 import { AgentModal } from './AgentModal';
+import { v4 as uuidv4 } from 'uuid'; 
 
 const ActionSidebar = ({ 
   job, initialMatchScore, tailorStep, tailorLoading, tailoredScore, scanProgress, scanText, 
@@ -161,6 +162,9 @@ export default function DetailedJob() {
   const [error, setError] = useState(null);
   const [hasSavedResume, setHasSavedResume] = useState(false);
 
+  // NEW: Keep track of sessions to prevent LangGraph State Bleed
+  const [sessionId, setSessionId] = useState(null);
+  const [agentSessionId, setAgentSessionId] = useState(null);
   
   const [tailorStep, setTailorStep] = useState('initial'); 
   const [file, setFile] = useState(null);
@@ -174,7 +178,6 @@ export default function DetailedJob() {
   const [isAutoFixing, setIsAutoFixing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
- 
   const [agentStep, setAgentStep] = useState(null); 
   const [agentProgress, setAgentProgress] = useState(0);
   const [emailDraft, setEmailDraft] = useState('');
@@ -238,6 +241,10 @@ export default function DetailedJob() {
     setTailorLoading(true);
     setScanProgress(0);
 
+    // 1. Generate a new session ID for the Tailoring flow
+    const currentSessionId = uuidv4();
+    setSessionId(currentSessionId);
+
     try {
       const token = await getToken(); 
       const formData = new FormData();
@@ -246,6 +253,7 @@ export default function DetailedJob() {
         formData.append('resume', uploadedFile); 
       }
       formData.append('jd_content', `${job.title}\n\n${job.description}`);
+      formData.append('session_id', currentSessionId); // Pass it via form data
 
       setScanText('Transmitting payload to backend...');
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/analyze`, formData, {
@@ -280,7 +288,8 @@ export default function DetailedJob() {
       const token = await getToken();
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, {
         action: actionType,
-        feedback: actionType === 'rewrite' ? userFeedback : null
+        feedback: actionType === 'rewrite' ? userFeedback : null,
+        session_id: sessionId // 2. Keep the context alive
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -304,7 +313,10 @@ export default function DetailedJob() {
     setIsDownloading(true);
     try {
       const token = await getToken();
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { action: 'accept' }, {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { 
+        action: 'accept',
+        session_id: sessionId // 3. Cleanly close out the state memory
+      }, {
         headers: { Authorization: `Bearer ${token}` }
       }).catch(e => console.warn(e));
       
@@ -345,12 +357,14 @@ export default function DetailedJob() {
   };
 
 
-
   
   const triggerAgentApply = async () => {
     setAgentStep('tailoring');
     setAgentProgress(10); 
     
+    // 4. Generate a completely independent session ID just for the Email Agent graph
+    const currentAgentSessionId = uuidv4();
+    setAgentSessionId(currentAgentSessionId);
 
     const uxInterval = setInterval(() => {
         setAgentProgress(prev => (prev < 90 ? prev + 2 : prev));
@@ -359,11 +373,11 @@ export default function DetailedJob() {
     try {
       const token = await getToken();
       
-
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/email/draft-email`, {
         raw_jd_content: `${job.title}\n\n${job.description}`,
         raw_resume_content: "Use base resume profile",
-        receiver_email: job.recuriter_email
+        receiver_email: job.recuriter_email,
+        session_id: currentAgentSessionId // Pass to the email controller
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -396,7 +410,8 @@ export default function DetailedJob() {
             email_subject: emailSubject,
             email_content: emailDraft,
             sender_email: senderEmail,
-            receiver_email: receiverEmail
+            receiver_email: receiverEmail,
+            session_id: agentSessionId // Keep the email agent thread alive
         }, {
             headers: { Authorization: `Bearer ${token}` }
         });

@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
-
+import os
 from langchain_google_genai import ChatGoogleGenerativeAI 
 from langchain_community.document_loaders import PyMuPDFLoader
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
 import requests
 from langgraph.graph import START , END , StateGraph
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel , Field
 from langchain_core.prompts import ChatPromptTemplate 
 from langchain_core.messages import HumanMessage , SystemMessage 
@@ -25,18 +24,18 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from langchain_huggingface import ChatHuggingFace , HuggingFaceEndpoint , HuggingFaceEndpointEmbeddings
-
+import json
+import smtplib
+from email.message import EmailMessage
+import uuid
 
 # In[ ]:
-
 
 load_dotenv()
 
 # In[ ]:
 
-
 app = FastAPI()
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,30 +47,14 @@ app.add_middleware(
 
 # In[ ]:
 
-
- # llm = ChatGoogleGenerativeAI(model='gemini-2.5-flash-lite',api_key='AIzaSyD52s-JjeM7HRPWIxWrzvwNP9bC66o8Hho')
-
-
-# In[ ]:
-
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.runnables import RunnableConfig
-
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.runnables import RunnableConfig
-
 def get_dynamic_llm(config: RunnableConfig):
     """Extracts the user's key from the config and returns a ready-to-use LLM."""
-    
     
     user_api_key = config.get("configurable", {}).get("user_api_key")
     
     if not user_api_key:
         raise ValueError("No Gemini API key found. Please add it via the Secrets Modal.")
 
-   
     model_name = os.getenv("MODEL_NAME", "gemini-3-flash-preview")
     print(model_name)
 
@@ -81,14 +64,12 @@ def get_dynamic_llm(config: RunnableConfig):
         temperature=0.1 
     )
 
-
 class ImprovementSuggestion(BaseModel):
     section: str = Field(description="The section of the resume (e.g., 'Experience', 'Projects')")
     original_text: str = Field(description="The exact weak sentence from the resume")
     suggested_rewrite: str = Field(description="The improved, quantifiable rewrite")
 
 # In[ ]:
-
 
 class ProjectDetails(BaseModel):
     name: str = Field(
@@ -107,9 +88,7 @@ class ProjectDetails(BaseModel):
         description="Any quantifiable metrics, scale, or major technical problems solved. Leave empty if none are mentioned."
     )
 
-
 # In[ ]:
-
 
 class BulletPoint(BaseModel):
     text: str
@@ -121,8 +100,6 @@ class Experience(BaseModel):
     role: str
     is_current: bool
     bullets: list[BulletPoint]
-
-    
 
 class Resume_Details(BaseModel):
     contact_details:str=Field(...,description='Contact details provided in the Resume')
@@ -136,9 +113,7 @@ class Resume_Details(BaseModel):
     hard_skills: list[str] =Field(...,description="Any hard skill mentioned in the Resume ")
     soft_skills: list[str] = Field(...,description='Any kind of the Soft skill mentioned in the resume')
 
-
 # In[ ]:
-
 
 class ScoreBreakdown(BaseModel):
     keyword_optimization: int = Field(
@@ -160,7 +135,6 @@ class ScoreBreakdown(BaseModel):
 
 # In[ ]:
 
-
 class ATSGrpahState(TypedDict):
     resume_content_raw: str
     parsed_resume_structured: Resume_Details 
@@ -181,9 +155,6 @@ class ATSGrpahState(TypedDict):
 
 # In[ ]:
 
-
-from pydantic import BaseModel, Field
-
 class ResumeScorer(BaseModel):
         
     suggestions: list[ImprovementSuggestion] = Field(
@@ -200,7 +171,6 @@ class ResumeScorer(BaseModel):
 
 # In[ ]:
 
-
 async def extract_node(state: ATSGrpahState,config:RunnableConfig):
   
     raw_content = state.get('resume_content_raw')
@@ -215,16 +185,9 @@ async def extract_node(state: ATSGrpahState,config:RunnableConfig):
 
     result = await chain.ainvoke({'details': raw_content})
 
-    
     return {"parsed_resume_structured": result}
 
-
 # In[ ]:
-
-
-from langchain_core.prompts import ChatPromptTemplate
-
-
 
 async def analyzer_node(state: ATSGrpahState, config: RunnableConfig):
     parsed_resume = state.get('parsed_resume_structured')
@@ -278,8 +241,8 @@ OUTPUT REQUIREMENTS:
         "semantic_error": result.semantic_errors,
         "missing_keywords": result.missing_keywords,
     }
-# In[ ]:
 
+# In[ ]:
 
 class ScoreModel(BaseModel):
     score: int = Field(
@@ -293,12 +256,6 @@ class ScoreModel(BaseModel):
 
 # In[ ]:
 
-
-import json
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-
-
 def safe_json_encoder(obj):
     """Safely converts ANY custom Pydantic object into a JSON-readable dictionary."""
     if hasattr(obj, 'model_dump'):
@@ -308,9 +265,6 @@ def safe_json_encoder(obj):
     if hasattr(obj, '__dict__'):
         return obj.__dict__     
     return str(obj)             
-
-
-
 
 async def score_node(state: ATSGrpahState, config: RunnableConfig) -> ATSGrpahState:
     parsed_resume = state.get('parsed_resume_structured', {})
@@ -383,8 +337,8 @@ Ensure your math is completely accurate based on the exact count of items in the
         "final_score": result.score,
         "score_breakdown": result.score_breakdown 
     }
-# In[ ]:
 
+# In[ ]:
 
 def needTailoredResume(state: ATSGrpahState):
    
@@ -398,15 +352,11 @@ def needTailoredResume(state: ATSGrpahState):
 
 # In[ ]:
 
-
 class FinalResume(BaseModel):
     final_score:int = Field(...,ge=0,le=100,description='Final Resume Score')
     final_resume_tailored:Resume_Details
 
 # In[ ]:
-
-
-import json
 
 async def tailor_my_resume(state: ATSGrpahState, config: RunnableConfig) -> ATSGrpahState:
     parsed_resume = state['parsed_resume_structured']
@@ -481,8 +431,8 @@ Generate the perfected, highly optimized `final_resume_tailored` and the new `fi
         "final_score": final_calculated_score,
         "tailored_resume": result.final_resume_tailored
     }
-# In[ ]:
 
+# In[ ]:
 
 graph = StateGraph(state_schema=ATSGrpahState)
 
@@ -499,17 +449,10 @@ graph.add_edge('tailor_my_resume',END)
 
 # In[ ]:
 
-
 checkpointers = InMemorySaver()
 final_graph = graph.compile(checkpointer=checkpointers,interrupt_after=['score_node'])
 
 # In[ ]:
-
-
-final_graph
-
-# In[ ]:
-
 
 class JD_Structured(BaseModel):
     skills: list[str] = Field(..., description='Skills required mentioned in JD')
@@ -522,7 +465,6 @@ class JD_Structured(BaseModel):
     perks_benefits: list[str] = Field(description='List of any benefits, perks, or "what we offer" details mentioned in the JD')
 
 # In[ ]:
-
 
 class JDMatcher(TypedDict):
     match_score:int
@@ -544,7 +486,6 @@ class JDMatcher(TypedDict):
 
 # In[ ]:
 
-
 async def jd_analyzer(state:JDMatcher,config:RunnableConfig):
     raw_jd = state['raw_jd_content']
     
@@ -562,7 +503,6 @@ async def jd_analyzer(state:JDMatcher,config:RunnableConfig):
     return {"parsed_jd_structured":result}
 
 # In[ ]:
-
 
 async def resume_extract(state: JDMatcher,config:RunnableConfig):
   
@@ -585,7 +525,6 @@ async def resume_extract(state: JDMatcher,config:RunnableConfig):
 
 # In[ ]:
 
-
 class Matcher(BaseModel):
     points_matched: list[str] = Field(...,description='Points or things that are matched in the resume acc to the Job discription')
     missing_points: list[str]
@@ -596,7 +535,6 @@ class Matcher(BaseModel):
     improvements:list[ImprovementSuggestion]=Field(description='Improvements Required in the Resume according to the JD')
 
 # In[ ]:
-
 
 async def evaluator_node(state: dict, config: RunnableConfig):
     parsed_jd = state.get('parsed_jd_structured')
@@ -672,7 +610,6 @@ YOUR OUTPUT MUST EXACTLY POPULATE THE FOLLOWING CATEGORIES:
 
 # In[ ]:
 
-
 class Score(BaseModel):
     score: int = Field(..., le=100, ge=0, description="Compare the JD and resume and provide the Score")
 
@@ -732,10 +669,7 @@ async def match_score_node(state: JDMatcher,config:RunnableConfig):
         "match_score": final_score
     }
 
-# ### Conditional Edge 
-
 # In[ ]:
-
 
 def should_tailor(state: JDMatcher):
     if state.get("user_approval") is True:
@@ -743,14 +677,6 @@ def should_tailor(state: JDMatcher):
     return END 
 
 # In[ ]:
-
-
-
-
-# #### HITL (Human in the Loop) Resume Corrector
-
-# In[ ]:
-
 
 async def tailored_resume(state: JDMatcher, config: RunnableConfig):
     jd = state['parsed_jd_structured']
@@ -788,6 +714,7 @@ async def tailored_resume(state: JDMatcher, config: RunnableConfig):
         2. TRUTH OVER ALL: Never invent new companies, degrees, or years of experience. Reframe, do not fabricate.
         3. TERMINOLOGY MIRRORING: Use exact technical keywords from the JD (e.g., 'Cloud-Native' vs 'Web-based') ONLY IF they genuinely align with the candidate's actual past work.
         4. QUANTIFIED BULLETS: Every project bullet point must include placeholders for metrics (e.g., [X%], [Y ms], [Z users]).
+        5. STRICT IDENTITY PRESERVATION: You MUST copy the candidate's exact Name, Email, Phone Number, Location, and Links (LinkedIn/GitHub) from the original resume. DO NOT alter, guess, or hallucinate contact information under any circumstances.
 
         YOUR MISSION:
         Rewrite the Resume_Details object. Maintain the JSON structure. Ensure the Professional Summary and Projects sections are the strongest evidence of the candidate's fit for the role and their personal preferences."""
@@ -817,8 +744,8 @@ async def tailored_resume(state: JDMatcher, config: RunnableConfig):
     refined_resume = await chain.ainvoke({
         "current_resume_data": current_resume.model_dump_json() if hasattr(current_resume, 'model_dump_json') else str(current_resume),
         "target_jd": jd.model_dump_json() if hasattr(jd, 'model_dump_json') else str(jd),
-        "improvements": feedback,
-        "gaps": gaps,
+        "improvements": json.dumps([s.model_dump() if hasattr(s, 'model_dump') else s for s in feedback]) if not isinstance(feedback, str) else feedback,
+        "gaps": json.dumps(gaps) if not isinstance(gaps, str) else gaps,
         "user_feedback": user_feedback,
         "match_score": match_score
     })
@@ -826,8 +753,8 @@ async def tailored_resume(state: JDMatcher, config: RunnableConfig):
     return {
         "tailored_resume_content": refined_resume 
     }
-# In[ ]:
 
+# In[ ]:
 
 def rewrite_taillored_resume(state: JDMatcher):
     
@@ -840,7 +767,6 @@ def rewrite_taillored_resume(state: JDMatcher):
 
 # In[ ]:
 
-
 graph = StateGraph(state_schema=JDMatcher)
 
 graph.add_node('jd_analyzer',jd_analyzer)
@@ -848,7 +774,6 @@ graph.add_node('resume_extract',resume_extract)
 graph.add_node('evaluator_node',evaluator_node)
 graph.add_node('tailored_resume',tailored_resume)
 graph.add_node('match_score_node',match_score_node)
-
 
 graph.add_edge(START,"jd_analyzer")
 graph.add_edge(START,"resume_extract")
@@ -864,20 +789,12 @@ graph.add_edge('tailored_resume',END)
 
 # In[ ]:
 
-
 checkpointers = InMemorySaver()
 final_graph2 = graph.compile(checkpointer=checkpointers,interrupt_after=['match_score_node',"tailored_resume"])
-config={"configurable":{"thread_id":"atul_user_tester"}}
 
 # In[ ]:
 
-
-final_graph2
-
-# In[ ]:
-
-
-class   EmailState(TypedDict):
+class EmailState(TypedDict):
     sender_email: str            
     receiver_email: str          
     raw_jd_content:str
@@ -889,21 +806,17 @@ class   EmailState(TypedDict):
 
 # In[ ]:
 
-
 class Email(BaseModel):
     subject: str = Field(description="The professional subject line of the email.")
     content: str = Field(description="The tailored, professional body of the email.")
 
 # In[ ]:
 
-
 async def draft_email_node(state: EmailState, config: RunnableConfig):
     """Generates a concise outreach email based on Resume and JD."""
     
-    
     llm = get_dynamic_llm(config)
     
-   
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are drafting a direct outreach email from the perspective of the CANDIDATE to the Hiring Manager or Recruiter. 
         Write entirely in the first person ("I", "my", "me") as if you are the applicant.
@@ -934,14 +847,7 @@ async def draft_email_node(state: EmailState, config: RunnableConfig):
         "email_content":response.content
     }
 
-
-
 # In[ ]:
-
-
-import smtplib
-from email.message import EmailMessage
-from langchain_core.runnables import RunnableConfig
 
 async def send_actual_email(state: EmailState, config: RunnableConfig):
     """
@@ -956,19 +862,15 @@ async def send_actual_email(state: EmailState, config: RunnableConfig):
         print("❌ Error: SMTP credentials missing from config.")
         return "Failed: Missing SMTP Credentials"
 
-    
     subject = state.get('email_subject', 'No Subject')
     sender = state.get('sender_email')  
     receiver = state.get('receiver_email')
     base_content = state.get('email_content', '')
     
-    
     resume_url = state.get('resume_url', 'No link provided') 
 
-   
     plain_text_content = f"{base_content}\n\nHere is my resume url: {resume_url}"
 
-    
     formatted_base_content = base_content.replace('\n', '<br>')
     
     html_content = f"""\
@@ -991,9 +893,7 @@ async def send_actual_email(state: EmailState, config: RunnableConfig):
     msg['From'] = sender
     msg['To'] = receiver
     
-    
     msg.set_content(plain_text_content)
-    
     
     msg.add_alternative(html_content, subtype='html')
 
@@ -1011,7 +911,6 @@ async def send_actual_email(state: EmailState, config: RunnableConfig):
 
 # In[ ]:
 
-
 def send_email(state:EmailState):
     permission = state['send']
 
@@ -1022,7 +921,6 @@ def send_email(state:EmailState):
 
 # In[ ]:
 
-
 graph = StateGraph(state_schema=EmailState)
 graph.add_node('email_node',draft_email_node)
 graph.add_node('send_actual_email',send_actual_email)
@@ -1031,18 +929,12 @@ graph.add_edge(START,"email_node")
 graph.add_conditional_edges("email_node",send_email,{"send_actual_email":"send_actual_email",END:END})
 graph.add_edge('send_actual_email',END)
 
-
-
 # In[ ]:
-
 
 checkpointers=InMemorySaver()
 final_graph3 = graph.compile(checkpointer=checkpointers,interrupt_after=['email_node'])
 
 # In[ ]:
-
-
-import os 
 
 hf_token = os.getenv("HUGGINGFACE_API_TOKEN")
 
@@ -1051,6 +943,7 @@ embedding_model = HuggingFaceEndpointEmbeddings(
     task='feature-extraction',
     huggingfacehub_api_token=hf_token
 )
+
 # In[ ]:
 
 mongo_client = os.getenv("MONGO_CLIENT")
@@ -1058,79 +951,50 @@ client = MongoClient(mongo_client)
 
 # In[ ]:
 
-
 db = client['ResumeTailor']
 
 # In[ ]:
-
 
 jobs_collection = db['jobs']
 
 # In[ ]:
 
-
-# all_items = list(jobs_collection.find()) # Convert to list so we can use it
-
-# for job in all_items:
-#     text_to_embed = f"Title: {job.get('title', '')} | Description: {job.get('description', '')}"
-#     vector_array = embedding_model.embed_query(text_to_embed)
-    
-    
-#     jobs_collection.update_one(
-#         {"_id": job["_id"]}, 
-#         {"$set": {"embeddings": vector_array}}
-#     )
-
-# print(" Database updated with 1024-dim embeddings!")
-
-# In[ ]:
-
-
-
-
-from fastapi import APIRouter, HTTPException
-
-# In[ ]:
-
-
 def pdf_parser(url:str)->str:
-
     document = PyMuPDFLoader(file_path=url)
     loaded_docs = document.load()
     
     return loaded_docs[0].page_content
     
-
 # In[ ]:
 
 @app.get("/ping")
 async def ping():
     return {"status": "alive", "message": "I am awake!"}
 
+# ADDED session_id TO ALL REQUESTS
 class ScoreRequest(BaseModel):
     resume_url: str
     api_key: Optional[str] = None
     clerk_id: str  
+    session_id: Optional[str] = None
 
 @app.post('/api/calculate-score')
 async def calculate_score(data: ScoreRequest):
     print(f"Processing for Clerk ID: {data.clerk_id}")
     resume_text = pdf_parser(url=data.resume_url) 
     
-    
     key_to_use = data.api_key if data.api_key else "YOUR_SAFE_FALLBACK_KEY_FROM_ENV"
     
-    
-    
+    # STATE BLEED FIX
+    thread_id = data.session_id if data.session_id else data.clerk_id
     
     config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": key_to_use 
         }
     }
     
-   
     result = await final_graph.ainvoke({'resume_content_raw': resume_text}, config=config)
     
     return {
@@ -1140,29 +1004,27 @@ async def calculate_score(data: ScoreRequest):
 
 # In[ ]:
 
-
 class UserNeed(BaseModel):
     user_choice: bool
     clerk_id: str            
     api_key: Optional[str] = None
+    session_id: Optional[str] = None
 
 @app.post('/api/tailor-resume')
 async def needTailoring(data: UserNeed):
     print(f"[TAILOR] Processing choice ({data.user_choice}) for Clerk ID: {data.clerk_id}")
     
-    
     key_to_use = data.api_key if data.api_key else "YOUR_SAFE_FALLBACK_KEY_FROM_ENV"
     
-    
-    
+    # STATE BLEED FIX
+    thread_id = data.session_id if data.session_id else data.clerk_id
     
     config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": key_to_use 
         }
     }
-    
     
     if data.user_choice:
         final_graph.update_state(config, {'user_choice': True})
@@ -1184,12 +1046,12 @@ async def needTailoring(data: UserNeed):
 
 # In[ ]:
 
-
 class JdPostRequest(BaseModel):
     resume_url: str
     jd_content: str
     clerk_id: str            
     api_key: Optional[str] = None
+    session_id: Optional[str] = None
 
 @app.post('/api/jd-matcher/analyze')
 async def start_graph(data: JdPostRequest):
@@ -1199,25 +1061,23 @@ async def start_graph(data: JdPostRequest):
     resume_text = pdf_parser(url=data.resume_url) 
     jd_content_raw = data.jd_content
 
-    
     key_to_use = data.api_key if data.api_key else "YOUR_SAFE_FALLBACK_KEY_FROM_ENV"
     
-    
-
     inputs = {
         "raw_jd_content": jd_content_raw,
         "raw_resume_content": resume_text
     }
     
-   
+    # STATE BLEED FIX
+    thread_id = data.session_id if data.session_id else data.clerk_id
+    
     config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": key_to_use 
         }
     }
 
-    
     result = await final_graph2.ainvoke(inputs, config=config)
 
     return {
@@ -1227,33 +1087,32 @@ async def start_graph(data: JdPostRequest):
 
 # In[ ]:
 
-
 class TailorRequest(BaseModel):
     action: str
     feedback: Optional[str] = None
     clerk_id: str            
     api_key: Optional[str] = None
+    session_id: Optional[str] = None
 
 @app.post('/api/jd-matcher/tailor')
 async def tailor_resume(data: TailorRequest):
     try:
         print(f"[JD MATCHER TAILOR] Processing action ({data.action}) for Clerk ID: {data.clerk_id}")
         
-       
         key_to_use = data.api_key if data.api_key else "YOUR_SAFE_FALLBACK_KEY_FROM_ENV"
         
-
+        # STATE BLEED FIX
+        thread_id = data.session_id if data.session_id else data.clerk_id
         
         config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": key_to_use 
         }
         }
         
         action = data.action.strip().lower()
 
-        
         if action == "start_tailoring":
             print("\n🎬 PHASE 2: Generating first tailored draft...")
             final_graph2.update_state(config, {"user_approval": True})
@@ -1270,14 +1129,11 @@ async def tailor_resume(data: TailorRequest):
         elif action == "rewrite":
             print("\n📝 PHASE 3: Refixing with User Feedback...")
             
-           
             state_updates = {"user_thought": "Rewrite"}
-            
             
             if data.feedback:
                 state_updates["human_feedback"] = [data.feedback]
             
-           
             final_graph2.update_state(config, state_updates)
             result = await final_graph2.ainvoke(None, config=config)
             
@@ -1308,13 +1164,10 @@ async def tailor_resume(data: TailorRequest):
 
 # In[ ]:
 
-
 class MatchedJobs(BaseModel):
     resume_url:str
-    
 
 # In[ ]:
-
 
 @app.post('/api/matched-jobs')
 async def matched_jobs(data:MatchedJobs):
@@ -1349,7 +1202,6 @@ async def matched_jobs(data:MatchedJobs):
     print("🔍 Searching for the perfect job match...")
     results = client["ResumeTailor"]["jobs"].aggregate(pipeline)
 
-
     matched_jobs = list(results)
 
     if not matched_jobs:
@@ -1363,10 +1215,7 @@ async def matched_jobs(data:MatchedJobs):
             "response":matched_jobs
         }
 
-    
-
 # In[ ]:
-
 
 class EmailAgentRequest(BaseModel):
     clerk_id: str
@@ -1376,16 +1225,19 @@ class EmailAgentRequest(BaseModel):
     raw_jd_content: Optional[str] = None
     raw_resume_content: Optional[str] = None
     send: Optional[bool] = False
+    session_id: Optional[str] = None
 
 # In[ ]:
-
 
 @app.post("/api/agent/draft-email")
 async def draft_email(data: EmailAgentRequest):
     
+    # STATE BLEED FIX
+    thread_id = data.session_id if data.session_id else data.clerk_id
+    
     config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": data.api_key,
             "email_user": data.email_user,
             "email_pass": data.email_pass
@@ -1398,7 +1250,6 @@ async def draft_email(data: EmailAgentRequest):
         "send": False
     }
 
-
     result = await final_graph3.ainvoke(initial_state, config=config)
 
     return {
@@ -1410,7 +1261,6 @@ async def draft_email(data: EmailAgentRequest):
 
 # In[ ]:
 
-
 class ApproveRequest(BaseModel):
     clerk_id: str
     api_key: str
@@ -1420,17 +1270,21 @@ class ApproveRequest(BaseModel):
     email_content: str
     sender_email: str
     receiver_email: str
-    approve: bool = True,
+    approve: bool = True 
     resume_url:str
+    session_id: Optional[str] = None
 
 # In[ ]:
 
-
 @app.post("/api/agent/approve-send")
 async def approve_and_send(data: ApproveRequest):
+    
+    # STATE BLEED FIX
+    thread_id = data.session_id if data.session_id else data.clerk_id
+    
     config = {
         "configurable": {
-            "thread_id": data.clerk_id,
+            "thread_id": thread_id,
             "user_api_key": data.api_key,
             "email_user": data.email_user,
             "email_pass": data.email_pass
@@ -1465,9 +1319,5 @@ async def approve_and_send(data: ApproveRequest):
 
 # In[ ]:
 
-
-import uvicorn
-
 if __name__ == "__main__":
-    # If you named your file ai_server.py, you can also use "ai_server:app" with reload=True
     uvicorn.run(app, host="127.0.0.1", port=8000)

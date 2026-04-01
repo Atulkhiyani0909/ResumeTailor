@@ -3,6 +3,7 @@ import axios from 'axios';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { Show, SignInButton, SignUpButton, useAuth } from '@clerk/react'; 
+import { v4 as uuidv4 } from 'uuid';
 
 export default function JdMatchValidator() {
 
@@ -21,9 +22,10 @@ export default function JdMatchValidator() {
   const [isAILoading, setIsAILoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   
-
   const [hasSavedResume, setHasSavedResume] = useState(false);
 
+  
+  const [sessionId, setSessionId] = useState(null);
 
   useEffect(() => {
     const savedData = localStorage.getItem('jdMatchHistory');
@@ -34,6 +36,7 @@ export default function JdMatchValidator() {
         setMatchScore(parsed.matchScore);
         setJdText(parsed.jdText);
         setFile({ name: parsed.fileName }); 
+        setSessionId(parsed.sessionId || null); 
         
         if (parsed.fixedResume) {
           setFixedResume(parsed.fixedResume);
@@ -78,6 +81,7 @@ export default function JdMatchValidator() {
     setStep('input');
     setScanProgress(0);
     setUserFeedback('');
+    setSessionId(null); 
   };
 
   const handleStartAnalysis = async () => {
@@ -88,16 +92,22 @@ export default function JdMatchValidator() {
     setStep('analyzing');
     setIsAILoading(true);
     setScanProgress(0);
+    
+    // 1. Generate a new session ID for this JD match task
+    const currentSessionId = uuidv4();
+    setSessionId(currentSessionId);
 
     try {
       const token = await getToken();  
       const formData = new FormData();
       
-     
       if (file && file instanceof File) {
         formData.append('resume', file);
       }
       formData.append('jd_content', jdText);
+      
+      // 2. Append the session ID
+      formData.append('session_id', currentSessionId);
 
       setScanText('Transmitting payload to backend...');
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/analyze`, formData, {
@@ -118,7 +128,8 @@ export default function JdMatchValidator() {
         fileName: file?.name || 'Saved Profile Resume',
         jdText: jdText,
         analysisResults: fullState,
-        matchScore: fullState.match_score || 0
+        matchScore: fullState.match_score || 0,
+        sessionId: currentSessionId // Save session ID locally
       }));
 
       setIsAILoading(false);
@@ -142,7 +153,8 @@ export default function JdMatchValidator() {
       const token = await getToken();
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, {
         action: actionType,
-        feedback: actionType === 'rewrite' ? userFeedback : null
+        feedback: actionType === 'rewrite' ? userFeedback : null,
+        session_id: sessionId // 3. Pass the session ID to maintain LangGraph memory
       }, {
         headers: { Authorization: `Bearer ${token}` }  
       });
@@ -158,13 +170,13 @@ export default function JdMatchValidator() {
         setUserFeedback('');
       }
 
-
       localStorage.setItem('jdMatchHistory', JSON.stringify({
         fileName: file?.name || 'Saved Profile Resume',
         jdText: jdText,
         analysisResults: analysisResults, 
         matchScore: newScore,
-        fixedResume: fullState.tailored_resume_content
+        fixedResume: fullState.tailored_resume_content,
+        sessionId: sessionId // Keep it in cache
       }));
 
       setIsAILoading(false);
@@ -180,7 +192,10 @@ export default function JdMatchValidator() {
     setIsDownloading(true);
     try {
       const token = await getToken();
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { action: 'accept' }, {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/jd-matcher/tailor`, { 
+        action: 'accept',
+        session_id: sessionId // 4. Pass the session ID to clear/finish the thread cleanly
+      }, {
         headers: { Authorization: `Bearer ${token}` } 
       }).catch(e => console.warn('Backend logging skipped', e));
 
