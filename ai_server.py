@@ -966,6 +966,10 @@ def pdf_parser(url:str)->str:
     return loaded_docs[0].page_content
     
 # In[ ]:
+@app.get("/")
+def read_root():
+    return {"message": "Server is running!"}
+
 
 @app.get("/ping")
 async def ping():

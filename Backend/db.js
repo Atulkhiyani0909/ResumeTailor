@@ -1,14 +1,20 @@
-import mongoose  from "mongoose";
+import mongoose from "mongoose";
 
-
-
-export const Db_connect = async () =>{
+export const Db_connect = async () => {
     try {
-         await mongoose.connect(process.env.MONGO_URL)
-         console.log('Connected Successfully to DB');
-        
-        
+        if (!process.env.MONGO_URL) {
+            throw new Error("MONGO_URL is undefined — check your .env file");
+        }
+
+        console.log("Connecting to:", process.env.MONGO_URL.replace(/:([^@]+)@/, ':****@'));
+
+        await mongoose.connect(process.env.MONGO_URL, {
+            serverSelectionTimeoutMS: 5000,
+        });
+
+        console.log('Connected Successfully to DB');
+
     } catch (error) {
-        console.log(error);
+        console.error("DB Connection Failed:", error.message);
     }
-}
+};
